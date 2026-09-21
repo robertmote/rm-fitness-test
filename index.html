@@ -1,0 +1,1618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>RM Fitness</title>
+<meta name="theme-color" content="#0f1115" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon-180.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="RM Fitness" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+<style>
+  :root{
+    --bg:#0f1115;
+    --surface:#171a21;
+    --surface2:#1f232c;
+    --surface3:#262b36;
+    --border:#2a2f3a;
+    --text:#eceef2;
+    --muted:#8b92a3;
+    --muted2:#5c6373;
+    --accent:#ff6a3d;
+    --accent-dim:#3a2018;
+    --good:#3ddc84;
+    --danger:#ff5c5c;
+    --radius:14px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+
+  /* Scrollbars matching the app's dark theme instead of the OS default */
+  *{scrollbar-width:thin; scrollbar-color:rgba(139,146,163,0.35) var(--bg);}
+  ::-webkit-scrollbar{width:10px; height:10px;}
+  ::-webkit-scrollbar-track{background:var(--bg);}
+  ::-webkit-scrollbar-thumb{background:rgba(139,146,163,0.35); border-radius:999px; border:2px solid var(--bg);}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(139,146,163,0.55);}
+  ::-webkit-scrollbar-button{display:none; width:0; height:0;}
+  ::-webkit-scrollbar-corner{background:var(--bg);}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{
+    max-width:480px;
+    margin:0 auto;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    position:relative;
+    background:var(--bg);
+  }
+  button{font-family:inherit;}
+  input{font-family:inherit;}
+  .hidden{display:none !important;}
+
+  /* ---------- App bar ---------- */
+  .appbar{
+    position:sticky; top:0; z-index:20;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 18px 12px;
+    background:linear-gradient(var(--bg) 70%, transparent);
+  }
+  .appbar h1{
+    font-size:20px; margin:0; letter-spacing:0.2px;
+  }
+  .appbar h1 .dot{color:var(--accent);}
+  .icon-btn{
+    background:var(--surface2);
+    border:1px solid var(--border);
+    color:var(--text);
+    width:38px; height:38px;
+    border-radius:12px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px;
+    cursor:pointer;
+  }
+  .icon-btn:active{background:var(--surface3);}
+  .icon-btn.danger{color:var(--danger);}
+
+  .timer-pill{
+    background:var(--surface2);
+    border:1px solid var(--border);
+    color:var(--accent);
+    font-variant-numeric:tabular-nums;
+    font-weight:600;
+    font-size:14px;
+    padding:8px 12px;
+    border-radius:999px;
+  }
+
+  /* ---------- Main scroll area ---------- */
+  .screen{
+    flex:1;
+    padding:0 16px 100px;
+    overflow-y:auto;
+  }
+
+  /* ---------- Buttons ---------- */
+  .btn{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    width:100%;
+    padding:14px 16px;
+    border-radius:var(--radius);
+    border:none;
+    font-size:15px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .btn-primary{background:var(--accent); color:#1a0d06;}
+  .btn-primary:active{background:#e65a2f;}
+  .btn-secondary{background:var(--surface2); color:var(--text); border:1px solid var(--border);}
+  .btn-secondary:active{background:var(--surface3);}
+  .btn-ghost{background:transparent; color:var(--muted); border:1px dashed var(--border);}
+  .btn-danger{background:transparent; color:var(--danger); border:1px solid rgba(255,92,92,0.35);}
+  .btn-sm{padding:8px 12px; font-size:13px; width:auto;}
+
+  /* ---------- Home ---------- */
+  .hero-cta{margin:6px 0 26px;}
+  .section-title{
+    font-size:13px; text-transform:uppercase; letter-spacing:0.08em;
+    color:var(--muted); margin:22px 0 10px; font-weight:700;
+  }
+  .empty-state{
+    text-align:center; color:var(--muted); padding:40px 12px;
+    border:1px dashed var(--border); border-radius:var(--radius);
+    font-size:14px; line-height:1.5;
+  }
+  .workout-card{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:14px 16px; margin-bottom:10px;
+    cursor:pointer;
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+  }
+  .workout-card:active{background:var(--surface2);}
+  .workout-card .wc-date{font-weight:700; font-size:15px;}
+  .workout-card .wc-meta{color:var(--muted); font-size:13px; margin-top:3px;}
+  .workout-card .wc-del{color:var(--muted2); font-size:18px; padding:4px 8px;}
+
+  /* ---------- Active workout ---------- */
+  .block{
+    border-radius:var(--radius);
+    margin-bottom:14px;
+    overflow:hidden;
+    border:1px solid var(--border);
+    background:var(--surface);
+  }
+  .superset-wrap{
+    border-radius:var(--radius);
+    margin-bottom:14px;
+    border:1px solid var(--accent);
+    background:var(--accent-dim);
+    padding:8px;
+  }
+  .superset-wrap .block{margin-bottom:8px;}
+  .superset-wrap .block:last-child{margin-bottom:0;}
+  .superset-label{
+    display:flex; align-items:center; gap:6px;
+    color:var(--accent); font-weight:800; font-size:11px;
+    letter-spacing:0.08em; text-transform:uppercase;
+    padding:4px 6px 8px;
+  }
+  .ex-head{
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding:14px 14px 10px;
+  }
+  .ex-name{font-size:16px; font-weight:700;}
+  .ex-tag{color:var(--muted); font-size:12.5px; margin-top:2px;}
+  .ex-remove{color:var(--muted2); font-size:16px; padding:2px 6px; cursor:pointer;}
+  .ex-history{
+    margin:0 14px 10px; padding:10px 12px;
+    background:var(--surface2); border-radius:10px;
+    font-size:12.5px; line-height:1.6;
+  }
+  .ex-history .row{display:flex; justify-content:space-between; gap:8px;}
+  .ex-history .label{color:var(--muted); flex-shrink:0;}
+  .ex-history .val{color:var(--text); text-align:right;}
+  .ex-history .val.best{color:var(--accent); font-weight:700;}
+  .ex-history.empty{color:var(--muted); text-align:center;}
+
+  .sets-table{padding:0 14px 10px;}
+  .sets-header, .set-row{
+    display:grid;
+    grid-template-columns:28px 1fr 1fr 34px 30px;
+    gap:8px;
+    align-items:center;
+  }
+  .sets-header{
+    color:var(--muted2); font-size:11px; text-transform:uppercase; letter-spacing:0.05em;
+    padding:4px 2px 8px;
+  }
+  .set-row{margin-bottom:6px;}
+  .set-num{
+    color:var(--muted); font-weight:700; font-size:13px; text-align:center;
+  }
+  .set-row input{
+    width:100%;
+    background:var(--surface2);
+    border:1px solid var(--border);
+    color:var(--text);
+    border-radius:9px;
+    padding:9px 8px;
+    font-size:14.5px;
+    text-align:center;
+  }
+  .set-row input:focus{outline:none; border-color:var(--accent);}
+  .set-check{
+    width:30px; height:30px; border-radius:9px;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--surface2); border:1px solid var(--border);
+    color:transparent; cursor:pointer; font-size:14px;
+  }
+  .set-check.done{background:rgba(61,220,132,0.15); border-color:var(--good); color:var(--good);}
+  .set-del{color:var(--muted2); font-size:16px; text-align:center; cursor:pointer;}
+
+  .add-set-btn{
+    margin:4px 14px 14px;
+    width:calc(100% - 28px);
+  }
+
+  .add-exercise-fab{margin:6px 0 20px;}
+
+  /* ---------- Sticky footer ---------- */
+  .footer-bar{
+    position:sticky; bottom:0; z-index:15;
+    padding:12px 16px calc(14px + env(safe-area-inset-bottom));
+    background:linear-gradient(transparent, var(--bg) 30%);
+  }
+
+  /* ---------- Bottom tab bar ---------- */
+  .bottom-fixed{
+    position:sticky; bottom:0; z-index:15;
+    background:var(--bg);
+    border-top:1px solid var(--border);
+  }
+  .start-cta{padding:12px 16px 10px;}
+  .bottom-nav{
+    display:flex; justify-content:center; align-items:stretch; gap:8px;
+    padding:8px 12px calc(8px + env(safe-area-inset-bottom));
+  }
+  .nav-item{
+    flex:1; max-width:120px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+    padding:6px 4px; border-radius:10px;
+    cursor:pointer; color:var(--muted);
+  }
+  .nav-item:active{background:var(--surface2);}
+  .nav-icon{font-size:20px; line-height:1;}
+  .nav-label{font-size:11px; font-weight:600;}
+  .nav-item.active{color:var(--accent);}
+
+  /* ---------- New exercise form ---------- */
+  .search-row{display:flex; gap:8px; align-items:center; margin-bottom:10px;}
+  .search-row .search-box{flex:1; margin-bottom:0;}
+  .form-field{margin-bottom:12px;}
+  .form-field label{display:block; font-size:12px; color:var(--muted); margin-bottom:6px; font-weight:600;}
+  .form-field input, .form-field select{
+    width:100%; background:var(--surface2); border:1px solid var(--border); color:var(--text);
+    border-radius:10px; padding:10px 12px; font-size:14.5px; font-family:inherit;
+  }
+  .form-field input:focus, .form-field select:focus{outline:none; border-color:var(--accent);}
+  .form-field select:invalid{color:var(--muted);}
+  .form-field select option{color:var(--text); background:var(--surface2);}
+
+  /* ---------- Templates ---------- */
+  .template-grid{display:grid; grid-template-columns:repeat(2, 1fr); gap:10px;}
+  .template-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:16px; cursor:pointer;
+    aspect-ratio:1;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;
+    gap:4px;
+  }
+  .template-card:active{background:var(--surface2);}
+  .tpl-name{font-size:15px; font-weight:700;}
+  .tpl-sub{color:var(--muted); font-size:12.5px;}
+  .template-card-add{
+    grid-column:1 / -1; aspect-ratio:auto;
+    flex-direction:row; gap:8px; padding:14px;
+    border:1px dashed var(--border); background:transparent; color:var(--accent);
+  }
+  .template-card-add:active{background:var(--surface2);}
+  .template-card-add .tpl-name{color:var(--accent);}
+
+  /* ---------- Modal sheet ---------- */
+  .sheet-backdrop{
+    position:fixed; inset:0; background:rgba(0,0,0,0.55);
+    z-index:50; display:flex; align-items:flex-start; justify-content:center;
+    padding-top:96px;
+  }
+  .sheet{
+    width:100%; max-width:480px;
+    background:var(--bg);
+    border-radius:20px;
+    border:1px solid var(--border);
+    height:56.25vh;
+    display:flex; flex-direction:column;
+    animation:slideup 0.18s ease-out;
+  }
+  @keyframes slideup{from{transform:translateY(24px); opacity:0.6;} to{transform:translateY(0); opacity:1;}}
+  .sheet-header{
+    padding:14px 16px 10px;
+    border-bottom:1px solid var(--border);
+    flex-shrink:0;
+  }
+  .sheet-title-row{
+    display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;
+  }
+  .sheet-title-row h2{font-size:17px; margin:0;}
+  .search-box{
+    display:flex; align-items:center; gap:8px;
+    background:var(--surface2); border:1px solid var(--border);
+    border-radius:12px; padding:10px 12px; margin-bottom:10px;
+  }
+  .search-box input{
+    flex:1; background:transparent; border:none; color:var(--text);
+    font-size:15px;
+  }
+  .search-box input:focus{outline:none;}
+  .search-box .sicon{color:var(--muted); font-size:15px;}
+  .chip-row{
+    display:flex; gap:8px; overflow-x:auto; padding-bottom:2px;
+    scrollbar-width:none;
+  }
+  .chip-row::-webkit-scrollbar{display:none;}
+  .chip{
+    flex-shrink:0;
+    padding:7px 13px;
+    border-radius:999px;
+    background:var(--surface2);
+    border:1px solid var(--border);
+    color:var(--muted);
+    font-size:13px; font-weight:600;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .chip.active{background:var(--accent); color:#1a0d06; border-color:var(--accent);}
+  .superset-toggle{
+    display:flex; align-items:center; gap:8px;
+    padding:10px 12px; margin-top:10px;
+    background:var(--surface2); border:1px solid var(--border); border-radius:12px;
+    cursor:pointer;
+    font-size:13.5px; font-weight:600; color:var(--muted);
+  }
+  .superset-toggle.on{background:var(--accent-dim); border-color:var(--accent); color:var(--accent);}
+  .sw{
+    width:36px; height:20px; border-radius:999px; background:var(--surface3);
+    position:relative; flex-shrink:0; transition:background 0.15s;
+  }
+  .sw::after{
+    content:""; position:absolute; top:2px; left:2px; width:16px; height:16px;
+    border-radius:50%; background:var(--muted); transition:transform 0.15s;
+  }
+  .superset-toggle.on .sw{background:var(--accent);}
+  .superset-toggle.on .sw::after{transform:translateX(16px); background:#1a0d06;}
+
+  .ex-list{flex:1; overflow-y:auto; padding:4px 8px 8px;}
+  .ex-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:8px 10px;
+    border-bottom:1px solid var(--border);
+    cursor:pointer;
+  }
+  .ex-row:active{background:var(--surface2);}
+  .ex-row.selected{background:var(--surface2);}
+  .ex-row-name{font-size:15px; font-weight:600;}
+  .ex-row-sub{font-size:12.5px; color:var(--muted); margin-top:2px;}
+  .ex-row-check{
+    width:24px; height:24px; border-radius:7px; flex-shrink:0;
+    border:1.5px solid var(--border); background:var(--surface2);
+    display:flex; align-items:center; justify-content:center; color:transparent; font-size:13px;
+  }
+  .ex-row-check.selected{background:var(--accent); border-color:var(--accent); color:#1a0d06;}
+  .ex-row-added{
+    font-size:11px; font-weight:700; color:var(--good); flex-shrink:0;
+    background:rgba(61,220,132,0.12); padding:4px 8px; border-radius:999px;
+  }
+  .ex-empty{padding:40px 20px; text-align:center; color:var(--muted); font-size:14px;}
+  .sheet-footer{
+    padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+    border-top:1px solid var(--border);
+    flex-shrink:0;
+  }
+
+  /* confirm modal */
+  .confirm-backdrop{
+    position:fixed; inset:0; background:rgba(0,0,0,0.6);
+    z-index:60; display:flex; align-items:center; justify-content:center;
+    padding:24px;
+  }
+  .confirm-box{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:16px; padding:20px; width:100%; max-width:340px;
+    animation:slideup 0.15s ease-out;
+  }
+  .confirm-msg{font-size:15px; line-height:1.5; margin-bottom:18px;}
+  .confirm-actions{display:flex; gap:10px;}
+  .confirm-actions .btn{flex:1;}
+
+  /* toast */
+  .toast{
+    position:fixed; left:50%; bottom:24px; transform:translateX(-50%);
+    background:var(--surface3); color:var(--text); border:1px solid var(--border);
+    padding:10px 18px; border-radius:999px; font-size:13.5px;
+    z-index:100; opacity:0; pointer-events:none; transition:opacity 0.2s, transform 0.2s;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(-6px);}
+
+  /* history detail */
+  .detail-set-line{
+    display:flex; justify-content:space-between;
+    padding:8px 0; border-bottom:1px solid var(--border); font-size:14px;
+  }
+  .detail-set-line:last-child{border-bottom:none;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+/* ==================== EXERCISE DATABASE ==================== */
+const EXERCISES = [
+  // Chest
+  {n:"Barbell Bench Press", c:"Chest", e:"Barbell"},
+  {n:"Incline Barbell Bench Press", c:"Chest", e:"Barbell"},
+  {n:"Decline Barbell Bench Press", c:"Chest", e:"Barbell"},
+  {n:"Dumbbell Bench Press", c:"Chest", e:"Dumbbell"},
+  {n:"Incline Dumbbell Bench Press", c:"Chest", e:"Dumbbell"},
+  {n:"Decline Dumbbell Bench Press", c:"Chest", e:"Dumbbell"},
+  {n:"Dumbbell Fly", c:"Chest", e:"Dumbbell"},
+  {n:"Incline Dumbbell Fly", c:"Chest", e:"Dumbbell"},
+  {n:"Cable Fly", c:"Chest", e:"Cable"},
+  {n:"Low-to-High Cable Fly", c:"Chest", e:"Cable"},
+  {n:"Pec Deck Machine", c:"Chest", e:"Machine"},
+  {n:"Chest Press Machine", c:"Chest", e:"Machine"},
+  {n:"Push-Up", c:"Chest", e:"Bodyweight"},
+  {n:"Weighted Dip", c:"Chest", e:"Bodyweight"},
+  {n:"Landmine Press", c:"Chest", e:"Barbell"},
+  {n:"Smith Machine Bench Press", c:"Chest", e:"Smith Machine"},
+
+  // Back
+  {n:"Barbell Deadlift", c:"Back", e:"Barbell"},
+  {n:"Sumo Deadlift", c:"Back", e:"Barbell"},
+  {n:"Rack Pull", c:"Back", e:"Barbell"},
+  {n:"Barbell Row", c:"Back", e:"Barbell"},
+  {n:"Pendlay Row", c:"Back", e:"Barbell"},
+  {n:"Dumbbell Row", c:"Back", e:"Dumbbell"},
+  {n:"Chest-Supported Dumbbell Row", c:"Back", e:"Dumbbell"},
+  {n:"T-Bar Row", c:"Back", e:"Barbell"},
+  {n:"Seated Cable Row", c:"Back", e:"Cable"},
+  {n:"Lat Pulldown", c:"Back", e:"Cable"},
+  {n:"Wide-Grip Lat Pulldown", c:"Back", e:"Cable"},
+  {n:"Close-Grip Lat Pulldown", c:"Back", e:"Cable"},
+  {n:"Pull-Up", c:"Back", e:"Bodyweight"},
+  {n:"Chin-Up", c:"Back", e:"Bodyweight"},
+  {n:"Straight-Arm Pulldown", c:"Back", e:"Cable"},
+  {n:"Machine Row", c:"Back", e:"Machine"},
+  {n:"Hyperextension", c:"Back", e:"Bodyweight"},
+  {n:"Good Morning", c:"Back", e:"Barbell"},
+
+  // Shoulders
+  {n:"Barbell Overhead Press", c:"Shoulders", e:"Barbell"},
+  {n:"Seated Barbell Overhead Press", c:"Shoulders", e:"Barbell"},
+  {n:"Seated Dumbbell Shoulder Press", c:"Shoulders", e:"Dumbbell"},
+  {n:"Arnold Press", c:"Shoulders", e:"Dumbbell"},
+  {n:"Machine Shoulder Press", c:"Shoulders", e:"Machine"},
+  {n:"Dumbbell Lateral Raise", c:"Shoulders", e:"Dumbbell"},
+  {n:"Cable Lateral Raise", c:"Shoulders", e:"Cable"},
+  {n:"Front Raise", c:"Shoulders", e:"Dumbbell"},
+  {n:"Rear Delt Fly", c:"Shoulders", e:"Dumbbell"},
+  {n:"Reverse Pec Deck", c:"Shoulders", e:"Machine"},
+  {n:"Face Pull", c:"Shoulders", e:"Cable"},
+  {n:"Upright Row", c:"Shoulders", e:"Barbell"},
+  {n:"Barbell Shrug", c:"Shoulders", e:"Barbell"},
+  {n:"Dumbbell Shrug", c:"Shoulders", e:"Dumbbell"},
+
+  // Legs
+  {n:"Barbell Back Squat", c:"Legs", e:"Barbell"},
+  {n:"Barbell Front Squat", c:"Legs", e:"Barbell"},
+  {n:"Box Squat", c:"Legs", e:"Barbell"},
+  {n:"Goblet Squat", c:"Legs", e:"Dumbbell"},
+  {n:"Smith Machine Squat", c:"Legs", e:"Smith Machine"},
+  {n:"Leg Press", c:"Legs", e:"Machine"},
+  {n:"Hack Squat", c:"Legs", e:"Machine"},
+  {n:"Bulgarian Split Squat", c:"Legs", e:"Dumbbell"},
+  {n:"Walking Lunge", c:"Legs", e:"Dumbbell"},
+  {n:"Reverse Lunge", c:"Legs", e:"Dumbbell"},
+  {n:"Step-Up", c:"Legs", e:"Dumbbell"},
+  {n:"Leg Extension", c:"Legs", e:"Machine"},
+  {n:"Seated Leg Curl", c:"Legs", e:"Machine"},
+  {n:"Lying Leg Curl", c:"Legs", e:"Machine"},
+  {n:"Romanian Deadlift", c:"Legs", e:"Barbell"},
+  {n:"Dumbbell Romanian Deadlift", c:"Legs", e:"Dumbbell"},
+  {n:"Stiff-Leg Deadlift", c:"Legs", e:"Barbell"},
+  {n:"Standing Calf Raise", c:"Legs", e:"Machine"},
+  {n:"Seated Calf Raise", c:"Legs", e:"Machine"},
+  {n:"Leg Press Calf Raise", c:"Legs", e:"Machine"},
+
+  // Glutes
+  {n:"Barbell Hip Thrust", c:"Glutes", e:"Barbell"},
+  {n:"Glute Bridge", c:"Glutes", e:"Barbell"},
+  {n:"Cable Glute Kickback", c:"Glutes", e:"Cable"},
+  {n:"Hip Abduction Machine", c:"Glutes", e:"Machine"},
+  {n:"Hip Adduction Machine", c:"Glutes", e:"Machine"},
+  {n:"Sumo Squat", c:"Glutes", e:"Dumbbell"},
+
+  // Biceps
+  {n:"Barbell Curl", c:"Biceps", e:"Barbell"},
+  {n:"EZ-Bar Curl", c:"Biceps", e:"Barbell"},
+  {n:"Dumbbell Curl", c:"Biceps", e:"Dumbbell"},
+  {n:"Alternating Dumbbell Curl", c:"Biceps", e:"Dumbbell"},
+  {n:"Hammer Curl", c:"Biceps", e:"Dumbbell"},
+  {n:"Incline Dumbbell Curl", c:"Biceps", e:"Dumbbell"},
+  {n:"Preacher Curl", c:"Biceps", e:"Barbell"},
+  {n:"Concentration Curl", c:"Biceps", e:"Dumbbell"},
+  {n:"Cable Curl", c:"Biceps", e:"Cable"},
+  {n:"Spider Curl", c:"Biceps", e:"Barbell"},
+
+  // Triceps
+  {n:"Close-Grip Bench Press", c:"Triceps", e:"Barbell"},
+  {n:"Tricep Pushdown", c:"Triceps", e:"Cable"},
+  {n:"Rope Tricep Pushdown", c:"Triceps", e:"Cable"},
+  {n:"Overhead Tricep Extension", c:"Triceps", e:"Dumbbell"},
+  {n:"Cable Overhead Tricep Extension", c:"Triceps", e:"Cable"},
+  {n:"Skull Crusher", c:"Triceps", e:"Barbell"},
+  {n:"Dumbbell Kickback", c:"Triceps", e:"Dumbbell"},
+  {n:"Weighted Tricep Dip", c:"Triceps", e:"Bodyweight"},
+  {n:"Diamond Push-Up", c:"Triceps", e:"Bodyweight"},
+
+  // Core
+  {n:"Plank", c:"Core", e:"Bodyweight"},
+  {n:"Side Plank", c:"Core", e:"Bodyweight"},
+  {n:"Hanging Leg Raise", c:"Core", e:"Bodyweight"},
+  {n:"Cable Crunch", c:"Core", e:"Cable"},
+  {n:"Ab Wheel Rollout", c:"Core", e:"Bodyweight"},
+  {n:"Weighted Sit-Up", c:"Core", e:"Bodyweight"},
+  {n:"Crunch", c:"Core", e:"Bodyweight"},
+  {n:"Decline Sit-Up", c:"Core", e:"Bodyweight"},
+  {n:"Russian Twist", c:"Core", e:"Dumbbell"},
+  {n:"Cable Woodchopper", c:"Core", e:"Cable"},
+
+  // Olympic / Full Body
+  {n:"Power Clean", c:"Olympic", e:"Barbell"},
+  {n:"Clean and Jerk", c:"Olympic", e:"Barbell"},
+  {n:"Snatch", c:"Olympic", e:"Barbell"},
+  {n:"Push Press", c:"Olympic", e:"Barbell"},
+  {n:"Thruster", c:"Olympic", e:"Barbell"},
+  {n:"Kettlebell Swing", c:"Olympic", e:"Kettlebell"},
+  {n:"Farmer's Carry", c:"Olympic", e:"Dumbbell"},
+].map((x,i)=>({id:"ex_"+i, name:x.n, category:x.c, equipment:x.e}));
+
+const CATEGORIES = ["All", ...Array.from(new Set(EXERCISES.map(e=>e.category)))];
+const EQUIPMENT_TYPES = Array.from(new Set([...EXERCISES.map(e=>e.equipment), "Free Weight"])).sort();
+
+/* ==================== WORKOUT TEMPLATES ==================== */
+const TEMPLATES = [
+  {name:"Back & Biceps", names:["Barbell Deadlift","Barbell Row","Lat Pulldown","Seated Cable Row","Barbell Curl","Hammer Curl"]},
+  {name:"Chest & Shoulders", names:["Barbell Bench Press","Incline Dumbbell Bench Press","Cable Fly","Barbell Overhead Press","Dumbbell Lateral Raise"]},
+  {name:"Triceps", names:["Close-Grip Bench Press","Tricep Pushdown","Overhead Tricep Extension","Skull Crusher"]},
+  {name:"Legs", names:["Barbell Back Squat","Leg Press","Romanian Deadlift","Leg Extension","Lying Leg Curl","Standing Calf Raise"]},
+].map(t=>({
+  name: t.name,
+  exerciseIds: t.names.map(n=>{
+    const ex = EXERCISES.find(e=>e.name===n);
+    if(!ex) throw new Error("Template exercise not found: "+n);
+    return ex.id;
+  })
+}));
+
+/* ==================== STORAGE ==================== */
+const LS_WORKOUTS = "ironlog_workouts_v1";
+const LS_ACTIVE = "ironlog_active_v1";
+
+function loadWorkouts(){
+  try{ return JSON.parse(localStorage.getItem(LS_WORKOUTS)) || []; }catch(e){ return []; }
+}
+function saveWorkouts(list){
+  localStorage.setItem(LS_WORKOUTS, JSON.stringify(list));
+}
+function loadActive(){
+  try{ return JSON.parse(localStorage.getItem(LS_ACTIVE)) || null; }catch(e){ return null; }
+}
+function saveActive(w){
+  if(w) localStorage.setItem(LS_ACTIVE, JSON.stringify(w));
+  else localStorage.removeItem(LS_ACTIVE);
+}
+
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+
+/* ==================== CUSTOM EXERCISES ==================== */
+const LS_CUSTOM_EX = "ironlog_custom_exercises_v1";
+function loadCustomExercises(){ try{ return JSON.parse(localStorage.getItem(LS_CUSTOM_EX)) || []; }catch(e){ return []; } }
+function saveCustomExercises(){ localStorage.setItem(LS_CUSTOM_EX, JSON.stringify(EXERCISES.filter(e=>e.custom))); }
+EXERCISES.push(...loadCustomExercises());
+
+function addCustomExercise(name, category, equipment){
+  const ex = {id:"custom_"+uid(), name, category, equipment, custom:true};
+  EXERCISES.push(ex);
+  saveCustomExercises();
+  return ex;
+}
+
+/* ==================== CUSTOM TEMPLATES ==================== */
+const LS_CUSTOM_TEMPLATES = "ironlog_custom_templates_v1";
+function loadCustomTemplates(){ try{ return JSON.parse(localStorage.getItem(LS_CUSTOM_TEMPLATES)) || []; }catch(e){ return []; } }
+function saveCustomTemplates(){ localStorage.setItem(LS_CUSTOM_TEMPLATES, JSON.stringify(TEMPLATES.filter(t=>t.custom))); }
+TEMPLATES.push(...loadCustomTemplates());
+
+function addCustomTemplate(name, exerciseIds){
+  const t = {name, exerciseIds, custom:true};
+  TEMPLATES.push(t);
+  saveCustomTemplates();
+  return t;
+}
+
+/* ==================== STATE ==================== */
+const state = {
+  route: "start",            // start | history | exercises | workout | detail | exdetail
+  workouts: loadWorkouts(),
+  active: loadActive(),     // in-progress workout or null
+  detailId: null,
+  exDetailId: null,
+  tplDetailIdx: null,
+  confirm: null,   // {message, confirmLabel, danger, onConfirm}
+  newExerciseOpen: false,
+  newTemplate: null,   // {name, search, category, selected} while the New Template sheet is open
+  exBrowse: {search:"", category:"All"},
+  picker: {
+    open:false,
+    search:"",
+    category:"All",
+    supersetMode:false,
+    pendingSelection:[]      // exercise ids selected while in superset mode
+  }
+};
+
+function findExercise(id){ return EXERCISES.find(e=>e.id===id); }
+
+/* ==================== HISTORY LOOKUP ==================== */
+// Returns {previous:[{weight,reps}], bestWeight:{weight,reps}, bestReps:{weight,reps}} for an exercise,
+// based on all *finished* workouts (most recent first).
+function getExerciseHistory(exerciseId){
+  const finished = state.workouts.slice().sort((a,b)=> new Date(b.finishedAt) - new Date(a.finishedAt));
+  let previous = null;
+  let bestWeight = null; // {weight,reps}
+  let bestReps = null;   // {weight,reps}
+
+  for(const w of finished){
+    const blocksWithEx = w.blocks.filter(b=>b.exerciseId===exerciseId);
+    if(blocksWithEx.length===0) continue;
+    const sets = [];
+    blocksWithEx.forEach(b=> b.sets.forEach(s=>{
+      const wt = parseFloat(s.weight), rp = parseFloat(s.reps);
+      if(!isNaN(wt) && !isNaN(rp)){
+        sets.push({weight:wt, reps:rp});
+        if(!bestWeight || wt > bestWeight.weight) bestWeight = {weight:wt, reps:rp};
+        if(!bestReps || rp > bestReps.reps) bestReps = {weight:wt, reps:rp};
+      }
+    }));
+    if(!previous && sets.length){ previous = sets; }
+  }
+  return {previous, bestWeight, bestReps};
+}
+
+function fmtNum(n){
+  return Number.isInteger(n) ? String(n) : String(Math.round(n*100)/100);
+}
+
+function buildHistoryBox(exerciseId){
+  const hist = getExerciseHistory(exerciseId);
+  if(!hist.previous) return `<div class="ex-history empty">No history yet for this exercise</div>`;
+  const prevStr = hist.previous.map(s=>`${fmtNum(s.weight)}&times;${fmtNum(s.reps)}`).join(", ");
+  return `
+    <div class="ex-history">
+      <div class="row"><span class="label">Previous</span><span class="val">${prevStr}</span></div>
+      <div class="row"><span class="label">Best weight</span><span class="val best">${fmtNum(hist.bestWeight.weight)} &times; ${fmtNum(hist.bestWeight.reps)}</span></div>
+      <div class="row"><span class="label">Best reps</span><span class="val best">${fmtNum(hist.bestReps.reps)} reps @ ${fmtNum(hist.bestReps.weight)}</span></div>
+    </div>`;
+}
+
+/* ==================== TOAST ==================== */
+let toastTimer=null;
+function showToast(msg){
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> el.classList.remove("show"), 1400);
+}
+
+/* ==================== RENDER ROOT ==================== */
+function render(){
+  const app = document.getElementById("app");
+  if(state.route==="start") app.innerHTML = renderStart();
+  else if(state.route==="history") app.innerHTML = renderHistoryTab();
+  else if(state.route==="exercises") app.innerHTML = renderExercisesTab();
+  else if(state.route==="exdetail") app.innerHTML = renderExerciseDetail();
+  else if(state.route==="tpldetail") app.innerHTML = renderTemplateDetail();
+  else if(state.route==="workout") app.innerHTML = renderWorkout();
+  else if(state.route==="detail") app.innerHTML = renderDetail();
+
+  if(state.picker.open){
+    app.insertAdjacentHTML("beforeend", renderPicker());
+  }
+  if(state.confirm){
+    app.insertAdjacentHTML("beforeend", renderConfirmModal());
+  }
+  if(state.newExerciseOpen){
+    app.insertAdjacentHTML("beforeend", renderNewExerciseModal());
+  }
+  if(state.newTemplate){
+    app.insertAdjacentHTML("beforeend", renderNewTemplateModal());
+  }
+  bindEvents();
+  if(state.route==="workout" && state.active) startTimerLoop();
+  else stopTimerLoop();
+}
+
+/* ==================== BOTTOM NAV ==================== */
+function renderBottomNav(active){
+  const tabs = [
+    {key:"history", label:"History", icon:"&#9201;"},
+    {key:"start", label:"Start Workout", icon:"&#127947;"},
+    {key:"exercises", label:"Exercises", icon:"&#128203;"}
+  ];
+  return `
+    <div class="bottom-nav">
+      ${tabs.map(t=>`
+        <div class="nav-item ${active===t.key?'active':''}" data-action="nav-tab" data-tab="${t.key}">
+          <div class="nav-icon">${t.icon}</div>
+          <div class="nav-label">${t.label}</div>
+        </div>`).join("")}
+    </div>
+  `;
+}
+
+/* ==================== START (LANDING) TAB ==================== */
+function renderStart(){
+  const resumeBanner = state.active ? `
+    <div class="workout-card" data-action="resume-workout" style="border-color:var(--accent);">
+      <div>
+        <div class="wc-date" style="color:var(--accent);">Workout in progress</div>
+        <div class="wc-meta">Tap to resume &middot; ${state.active.blocks.length} exercise${state.active.blocks.length===1?"":"s"}</div>
+      </div>
+      <div>&rsaquo;</div>
+    </div>` : "";
+
+  const templateCard = (t,i)=>`
+    <div class="template-card" data-action="view-template" data-idx="${i}">
+      <div class="tpl-name">${t.name}</div>
+      <div class="tpl-sub">${t.exerciseIds.length} exercises</div>
+    </div>`;
+
+  const defaultCards = TEMPLATES.map((t,i)=>({t,i})).filter(x=>!x.t.custom).map(x=>templateCard(x.t,x.i)).join("");
+  const customCards = TEMPLATES.map((t,i)=>({t,i})).filter(x=>x.t.custom).map(x=>templateCard(x.t,x.i)).join("");
+  const addCard = `
+    <div class="template-card template-card-add" data-action="open-new-template">
+      <div style="font-size:20px; line-height:1;">+</div>
+      <div class="tpl-name">Template</div>
+    </div>`;
+
+  return `
+    <div class="appbar">
+      <h1>RM <span class="dot">Fitness</span></h1>
+    </div>
+    <div class="screen">
+      ${resumeBanner}
+      <div class="section-title" style="margin-top:6px;">My Templates</div>
+      <div class="template-grid">${customCards}</div>
+      <div class="section-title">Default Templates</div>
+      <div class="template-grid">${defaultCards}</div>
+      <div class="template-grid" style="margin-top:10px;">${addCard}</div>
+    </div>
+    <div class="bottom-fixed">
+      <div class="start-cta">
+        <button class="btn btn-primary" data-action="start-workout">+ Start Workout</button>
+      </div>
+      ${renderBottomNav("start")}
+    </div>
+  `;
+}
+
+/* ==================== HISTORY TAB ==================== */
+function renderHistoryTab(){
+  const finished = state.workouts.slice().sort((a,b)=> new Date(b.finishedAt) - new Date(a.finishedAt));
+
+  const list = finished.length ? finished.map(w=>{
+    const d = new Date(w.finishedAt);
+    const dateStr = d.toLocaleDateString(undefined,{weekday:"short", month:"short", day:"numeric"});
+    const setCount = w.blocks.reduce((n,b)=>n+b.sets.filter(s=>s.weight!==""&&s.reps!=="").length,0);
+    const durMin = w.startedAt ? Math.max(1, Math.round((new Date(w.finishedAt)-new Date(w.startedAt))/60000)) : null;
+    return `
+      <div class="workout-card" data-action="view-detail" data-id="${w.id}">
+        <div>
+          <div class="wc-date">${dateStr}</div>
+          <div class="wc-meta">${w.blocks.length} exercise${w.blocks.length===1?"":"s"} &middot; ${setCount} set${setCount===1?"":"s"}${durMin?` &middot; ${durMin} min`:""}</div>
+        </div>
+        <div class="wc-del" data-action="delete-workout" data-id="${w.id}">&times;</div>
+      </div>`;
+  }).join("") : `<div class="empty-state">No workouts logged yet.<br/>Start your first workout to begin tracking progress.</div>`;
+
+  return `
+    <div class="appbar">
+      <h1>History</h1>
+    </div>
+    <div class="screen">
+      ${list}
+    </div>
+    <div class="bottom-fixed">
+      ${renderBottomNav("history")}
+    </div>
+  `;
+}
+
+/* ==================== EXERCISES TAB ==================== */
+function buildExBrowseRows(){
+  const b = state.exBrowse;
+  const q = b.search.trim().toLowerCase();
+  let list = EXERCISES.filter(ex=>{
+    const matchesCat = b.category==="All" || ex.category===b.category;
+    if(!matchesCat) return false;
+    if(!q) return true;
+    return ex.name.toLowerCase().includes(q) || ex.category.toLowerCase().includes(q) || ex.equipment.toLowerCase().includes(q);
+  }).sort((a,b2)=>a.name.localeCompare(b2.name));
+
+  return list.length ? list.map(ex=>`
+    <div class="ex-row" data-action="view-exercise" data-id="${ex.id}">
+      <div>
+        <div class="ex-row-name">${ex.name}</div>
+        <div class="ex-row-sub">${ex.category} &middot; ${ex.equipment}</div>
+      </div>
+      <div style="color:var(--muted2); font-size:16px;">&rsaquo;</div>
+    </div>`).join("") : `<div class="ex-empty">No exercises match your search.</div>`;
+}
+
+function renderExercisesTab(){
+  const b = state.exBrowse;
+  const chips = CATEGORIES.map(c=>`<div class="chip ${b.category===c?'active':''}" data-action="exbrowse-category" data-cat="${c}">${c}</div>`).join("");
+
+  return `
+    <div class="appbar">
+      <h1>Exercises</h1>
+    </div>
+    <div class="screen">
+      <div class="search-row">
+        <div class="search-box">
+          <span class="sicon">&#9906;</span>
+          <input id="exbrowse-search" type="text" placeholder="Search..." value="${escAttr(b.search)}" data-action="exbrowse-search-input" autocomplete="off" />
+        </div>
+        <button class="btn btn-secondary btn-sm" data-action="open-new-exercise">+ New</button>
+      </div>
+      <div class="chip-row" style="margin-bottom:14px;">${chips}</div>
+      <div id="exbrowse-list">${buildExBrowseRows()}</div>
+    </div>
+    <div class="bottom-fixed">
+      ${renderBottomNav("exercises")}
+    </div>
+  `;
+}
+
+function renderNewExerciseModal(){
+  const catOptions = CATEGORIES.filter(c=>c!=="All").map(c=>`<option value="${c}">${c}</option>`).join("");
+  const equipOptions = EQUIPMENT_TYPES.map(e=>`<option value="${e}">${e}</option>`).join("");
+  return `
+    <div class="confirm-backdrop">
+      <div class="confirm-box" onclick="event.stopPropagation()">
+        <div style="font-size:16px; font-weight:700; margin-bottom:14px;">New Exercise</div>
+        <div class="form-field">
+          <label>Name</label>
+          <input id="newex-name" type="text" placeholder="e.g. Cable Pullover" autocomplete="off" />
+        </div>
+        <div class="form-field">
+          <label>Category</label>
+          <select id="newex-category" required>
+            <option value="" disabled selected hidden>Choose Option</option>
+            ${catOptions}
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Equipment</label>
+          <select id="newex-equipment" required>
+            <option value="" disabled selected hidden>Choose Option</option>
+            ${equipOptions}
+          </select>
+        </div>
+        <div class="confirm-actions">
+          <button class="btn btn-secondary" data-action="close-new-exercise">Cancel</button>
+          <button class="btn btn-primary" data-action="save-new-exercise">Add Exercise</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderExerciseDetail(){
+  const ex = findExercise(state.exDetailId);
+  if(!ex){ state.route="exercises"; return renderExercisesTab(); }
+
+  return `
+    <div class="appbar">
+      <div class="icon-btn" data-action="back-exercises">&larr;</div>
+    </div>
+    <div class="screen">
+      <div style="font-size:20px; font-weight:700; margin-bottom:4px;">${ex.name}</div>
+      <div style="color:var(--muted); font-size:13px; margin-bottom:16px;">${ex.category} &middot; ${ex.equipment}</div>
+      ${buildHistoryBox(ex.id)}
+    </div>
+  `;
+}
+
+/* ==================== TEMPLATE DETAIL ==================== */
+function renderTemplateDetail(){
+  const idx = state.tplDetailIdx;
+  const t = TEMPLATES[idx];
+  if(!t){ state.route="start"; return renderStart(); }
+
+  const items = t.exerciseIds.map(exId=>{
+    const ex = findExercise(exId);
+    return `
+      <div class="block">
+        <div class="ex-head">
+          <div>
+            <div class="ex-name">${ex.name}</div>
+            <div class="ex-tag">${ex.category} &middot; ${ex.equipment}</div>
+          </div>
+        </div>
+        ${buildHistoryBox(exId)}
+      </div>`;
+  }).join("");
+
+  return `
+    <div class="appbar">
+      <div class="icon-btn" data-action="back-to-start">&larr;</div>
+      ${t.custom ? `<button class="btn btn-secondary btn-sm" data-action="edit-template" data-idx="${idx}">Edit</button>` : ""}
+    </div>
+    <div class="screen">
+      <div style="font-size:20px; font-weight:700; margin-bottom:4px;">${escHtml(t.name)}</div>
+      <div style="color:var(--muted); font-size:13px; margin-bottom:16px;">${t.exerciseIds.length} exercise${t.exerciseIds.length===1?"":"s"}</div>
+      ${items}
+    </div>
+    <div class="bottom-fixed">
+      <div class="start-cta">
+        <button class="btn btn-primary" data-action="start-template" data-idx="${idx}">+ Start Workout</button>
+      </div>
+    </div>
+  `;
+}
+
+/* ==================== ACTIVE WORKOUT ==================== */
+function renderWorkout(){
+  const w = state.active;
+  if(!w) { state.route="start"; return renderStart(); }
+
+  // group blocks: consecutive blocks sharing supersetId are rendered together
+  const groups = [];
+  w.blocks.forEach(b=>{
+    const last = groups[groups.length-1];
+    if(b.supersetId && last && last.supersetId===b.supersetId){
+      last.blocks.push(b);
+    } else {
+      groups.push({supersetId:b.supersetId, blocks:[b]});
+    }
+  });
+
+  const blocksHtml = groups.map(g=>{
+    const inner = g.blocks.map(b=>renderBlock(b)).join("");
+    if(g.supersetId){
+      return `<div class="superset-wrap"><div class="superset-label">&#9889; Superset</div>${inner}</div>`;
+    }
+    return inner;
+  }).join("");
+
+  const empty = w.blocks.length===0 ? `<div class="empty-state">No exercises added yet.<br/>Tap "Add Exercise" to get started.</div>` : "";
+
+  return `
+    <div class="appbar">
+      <div class="icon-btn danger" data-action="discard-workout" title="Discard workout">&times;</div>
+      <div class="timer-pill" id="workout-timer">0:00</div>
+    </div>
+    <div class="screen">
+      ${empty}
+      ${blocksHtml}
+      <button class="btn btn-secondary add-exercise-fab" data-action="open-picker">+ Add Exercise</button>
+    </div>
+    <div class="footer-bar">
+      <button class="btn btn-primary" data-action="finish-workout">Finish Workout</button>
+    </div>
+  `;
+}
+
+function renderBlock(b){
+  const ex = findExercise(b.exerciseId);
+  const histHtml = buildHistoryBox(b.exerciseId);
+
+  const setsHtml = b.sets.map((s,i)=>`
+    <div class="set-row">
+      <div class="set-num">${i+1}</div>
+      <input type="text" inputmode="decimal" placeholder="weight" value="${escAttr(s.weight)}"
+        data-action="set-weight" data-block="${b.id}" data-set="${s.id}" />
+      <input type="text" inputmode="numeric" placeholder="reps" value="${escAttr(s.reps)}"
+        data-action="set-reps" data-block="${b.id}" data-set="${s.id}" />
+      <div class="set-check ${s.done?'done':''}" data-action="toggle-done" data-block="${b.id}" data-set="${s.id}">&#10003;</div>
+      <div class="set-del" data-action="delete-set" data-block="${b.id}" data-set="${s.id}">&times;</div>
+    </div>
+  `).join("");
+
+  return `
+    <div class="block">
+      <div class="ex-head">
+        <div>
+          <div class="ex-name">${ex.name}</div>
+          <div class="ex-tag">${ex.category} &middot; ${ex.equipment}</div>
+        </div>
+        <div class="ex-remove" data-action="remove-block" data-block="${b.id}">&times;</div>
+      </div>
+      ${histHtml}
+      <div class="sets-table">
+        <div class="sets-header"><div></div><div>Weight</div><div>Reps</div><div></div><div></div></div>
+        ${setsHtml}
+      </div>
+      <button class="btn btn-ghost btn-sm add-set-btn" data-action="add-set" data-block="${b.id}">+ Add Set</button>
+    </div>
+  `;
+}
+
+/* ==================== HISTORY DETAIL ==================== */
+function renderDetail(){
+  const w = state.workouts.find(x=>x.id===state.detailId);
+  if(!w){ state.route="history"; return renderHistoryTab(); }
+  const d = new Date(w.finishedAt);
+  const dateStr = d.toLocaleDateString(undefined,{weekday:"long", month:"long", day:"numeric", year:"numeric"});
+  const durMin = w.startedAt ? Math.max(1, Math.round((new Date(w.finishedAt)-new Date(w.startedAt))/60000)) : null;
+
+  const groups = [];
+  w.blocks.forEach(b=>{
+    const last = groups[groups.length-1];
+    if(b.supersetId && last && last.supersetId===b.supersetId) last.blocks.push(b);
+    else groups.push({supersetId:b.supersetId, blocks:[b]});
+  });
+
+  const content = groups.map(g=>{
+    const inner = g.blocks.map(b=>{
+      const ex = findExercise(b.exerciseId);
+      const lines = b.sets.filter(s=>s.weight!==""||s.reps!=="").map((s,i)=>`
+        <div class="detail-set-line"><span>Set ${i+1}</span><span>${escHtml(s.weight)||'-'} &times; ${escHtml(s.reps)||'-'}</span></div>
+      `).join("") || `<div class="detail-set-line"><span style="color:var(--muted)">No sets logged</span></div>`;
+      return `
+        <div class="block">
+          <div class="ex-head"><div><div class="ex-name">${ex.name}</div><div class="ex-tag">${ex.category} &middot; ${ex.equipment}</div></div></div>
+          <div class="sets-table">${lines}</div>
+        </div>`;
+    }).join("");
+    if(g.supersetId) return `<div class="superset-wrap"><div class="superset-label">&#9889; Superset</div>${inner}</div>`;
+    return inner;
+  }).join("");
+
+  return `
+    <div class="appbar">
+      <div class="icon-btn" data-action="back-history">&larr;</div>
+      <div class="icon-btn danger" data-action="delete-workout" data-id="${w.id}" title="Delete">&times;</div>
+    </div>
+    <div class="screen">
+      <div class="section-title" style="margin-top:0;">${dateStr}</div>
+      <div style="color:var(--muted); font-size:13px; margin-bottom:16px;">
+        ${w.blocks.length} exercise${w.blocks.length===1?"":"s"}${durMin?` &middot; ${durMin} min`:""}
+      </div>
+      ${content}
+    </div>
+  `;
+}
+
+/* ==================== EXERCISE PICKER ==================== */
+function buildPickerRows(){
+  const p = state.picker;
+  const q = p.search.trim().toLowerCase();
+  let list = EXERCISES.filter(ex=>{
+    const matchesCat = p.category==="All" || ex.category===p.category;
+    if(!matchesCat) return false;
+    if(!q) return true;
+    return ex.name.toLowerCase().includes(q) || ex.category.toLowerCase().includes(q) || ex.equipment.toLowerCase().includes(q);
+  }).sort((a,b)=>a.name.localeCompare(b.name));
+
+  const addedIds = new Set((state.active? state.active.blocks: []).map(b=>b.exerciseId));
+
+  return list.length ? list.map(ex=>{
+    const pending = p.pendingSelection.includes(ex.id);
+    const isSelected = p.supersetMode ? pending : (pending || addedIds.has(ex.id));
+    const rightHtml = p.supersetMode
+      ? `<div class="ex-row-check ${pending?'selected':''}">&#10003;</div>`
+      : (isSelected ? `<div class="ex-row-added">Added</div>` : "");
+    return `
+      <div class="ex-row ${isSelected?'selected':''}" data-action="pick-exercise" data-id="${ex.id}">
+        <div>
+          <div class="ex-row-name">${ex.name}</div>
+          <div class="ex-row-sub">${ex.category} &middot; ${ex.equipment}</div>
+        </div>
+        ${rightHtml}
+      </div>`;
+  }).join("") : `<div class="ex-empty">No exercises match your search.</div>`;
+}
+
+function buildPickerFooter(){
+  const p = state.picker;
+  if(p.supersetMode){
+    return p.pendingSelection.length>=2
+      ? `<div class="sheet-footer"><button class="btn btn-primary" data-action="confirm-superset">Group as Superset (${p.pendingSelection.length})</button></div>`
+      : `<div class="sheet-footer"><button class="btn btn-secondary" disabled style="opacity:.5;">Select 2+ exercises to group</button></div>`;
+  }
+  return p.pendingSelection.length>0
+    ? `<div class="sheet-footer"><button class="btn btn-primary" data-action="confirm-add-exercises">Add (${p.pendingSelection.length})</button></div>`
+    : `<div class="sheet-footer"><button class="btn btn-secondary" disabled style="opacity:.5;">Select exercises to add</button></div>`;
+}
+
+function renderPicker(){
+  const p = state.picker;
+  const chips = CATEGORIES.map(c=>`<div class="chip ${p.category===c?'active':''}" data-action="pick-category" data-cat="${c}">${c}</div>`).join("");
+
+  return `
+    <div class="sheet-backdrop">
+      <div class="sheet" onclick="event.stopPropagation()">
+        <div class="sheet-header">
+          <div class="sheet-title-row">
+            <h2>Add Exercise</h2>
+            <div style="display:flex; align-items:center; gap:14px;">
+              <button class="btn btn-secondary btn-sm" data-action="open-new-exercise">+ New</button>
+              <div class="icon-btn" data-action="close-picker">&times;</div>
+            </div>
+          </div>
+          <div class="search-box">
+            <span class="sicon">&#9906;</span>
+            <input id="picker-search" type="text" placeholder="Search exercises..." value="${escAttr(p.search)}" data-action="search-input" autocomplete="off" />
+          </div>
+          <div class="chip-row">${chips}</div>
+          <div class="superset-toggle ${p.supersetMode?'on':''}" data-action="toggle-superset-mode">
+            <div class="sw"></div>
+            <span>Superset mode ${p.supersetMode? '&mdash; tap exercises to group them' : ''}</span>
+          </div>
+        </div>
+        <div class="ex-list" id="picker-ex-list">${buildPickerRows()}</div>
+        <div id="picker-footer">${buildPickerFooter()}</div>
+      </div>
+    </div>
+  `;
+}
+
+/* ==================== CONFIRM MODAL ==================== */
+// Custom in-app confirm dialog. window.confirm() is a silent no-op in iOS
+// home-screen (standalone) PWAs, which is why the Finish button looked dead.
+function renderConfirmModal(){
+  const c = state.confirm;
+  return `
+    <div class="confirm-backdrop" data-action="confirm-no">
+      <div class="confirm-box" onclick="event.stopPropagation()">
+        <div class="confirm-msg">${escHtml(c.message)}</div>
+        <div class="confirm-actions">
+          <button class="btn btn-secondary" data-action="confirm-no">Cancel</button>
+          <button class="btn ${c.danger ? 'btn-danger' : 'btn-primary'}" data-action="confirm-yes">${escHtml(c.confirmLabel)}</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function showConfirm(message, onConfirm, opts={}){
+  state.confirm = {message, onConfirm, confirmLabel: opts.confirmLabel || "Confirm", danger: !!opts.danger};
+  render();
+}
+
+function buildTemplateRows(){
+  const t = state.newTemplate;
+  const q = t.search.trim().toLowerCase();
+  let list = EXERCISES.filter(ex=>{
+    const matchesCat = t.category==="All" || ex.category===t.category;
+    if(!matchesCat) return false;
+    if(!q) return true;
+    return ex.name.toLowerCase().includes(q) || ex.category.toLowerCase().includes(q) || ex.equipment.toLowerCase().includes(q);
+  }).sort((a,b)=>a.name.localeCompare(b.name));
+
+  return list.length ? list.map(ex=>{
+    const selected = t.selected.includes(ex.id);
+    return `
+      <div class="ex-row" data-action="toggle-template-exercise" data-id="${ex.id}">
+        <div>
+          <div class="ex-row-name">${ex.name}</div>
+          <div class="ex-row-sub">${ex.category} &middot; ${ex.equipment}</div>
+        </div>
+        <div class="ex-row-check ${selected?'selected':''}">&#10003;</div>
+      </div>`;
+  }).join("") : `<div class="ex-empty">No exercises match your search.</div>`;
+}
+
+function buildTemplateFooter(){
+  const t = state.newTemplate;
+  const label = t.editIdx!=null ? "Save Changes" : "Create Template";
+  return `<button class="btn btn-primary" data-action="save-new-template">${label}${t.selected.length ? ' (' + t.selected.length + ')' : ''}</button>`;
+}
+
+function renderNewTemplateModal(){
+  const t = state.newTemplate;
+  const chips = CATEGORIES.map(c=>`<div class="chip ${t.category===c?'active':''}" data-action="newtpl-category" data-cat="${c}">${c}</div>`).join("");
+
+  return `
+    <div class="sheet-backdrop">
+      <div class="sheet" onclick="event.stopPropagation()">
+        <div class="sheet-header">
+          <div class="sheet-title-row">
+            <h2>${t.editIdx!=null ? "Edit Template" : "New Template"}</h2>
+            <div class="icon-btn" data-action="close-new-template">&times;</div>
+          </div>
+          <div class="form-field" style="margin-bottom:10px;">
+            <input id="newtpl-name" type="text" placeholder="Template name (e.g. Push Day)" value="${escAttr(t.name)}" autocomplete="off" />
+          </div>
+          <div class="search-box">
+            <span class="sicon">&#9906;</span>
+            <input id="newtpl-search" type="text" placeholder="Search exercises..." value="${escAttr(t.search)}" data-action="newtpl-search-input" autocomplete="off" />
+          </div>
+          <div class="chip-row">${chips}</div>
+        </div>
+        <div class="ex-list" id="newtpl-ex-list">${buildTemplateRows()}</div>
+        <div class="sheet-footer" id="newtpl-footer">${buildTemplateFooter()}</div>
+      </div>
+    </div>
+  `;
+}
+
+/* ==================== HELPERS ==================== */
+function escHtml(s){ return String(s??"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function escAttr(s){ return escHtml(s); }
+
+function newSet(prevWeight, prevReps){
+  return {id:uid(), weight: prevWeight??"", reps: prevReps??"", done:false};
+}
+
+/* ==================== ACTIONS ==================== */
+function startWorkout(){
+  if(state.active){ state.route="workout"; render(); return; }
+  state.active = {id:uid(), startedAt:new Date().toISOString(), finishedAt:null, blocks:[]};
+  saveActive(state.active);
+  state.route="workout";
+  render();
+}
+
+function startWorkoutFromTemplate(idx){
+  if(state.active){ state.route="workout"; render(); showToast("Resuming workout in progress"); return; }
+  const t = TEMPLATES[idx];
+  state.active = {
+    id:uid(), startedAt:new Date().toISOString(), finishedAt:null,
+    blocks: t.exerciseIds.map(exId=>({id:uid(), supersetId:null, exerciseId:exId, sets:[newSet()]}))
+  };
+  saveActive(state.active);
+  state.route="workout";
+  render();
+}
+
+function discardWorkout(){
+  showConfirm("Discard this workout? All unsaved sets will be lost.", doDiscardWorkout, {confirmLabel:"Discard", danger:true});
+}
+function doDiscardWorkout(){
+  state.active = null;
+  saveActive(null);
+  state.route="start";
+  render();
+}
+
+function finishWorkout(){
+  const empty = state.active.blocks.length===0;
+  const msg = empty
+    ? "No exercises have been added to this workout. Finish anyway?"
+    : "Finish and save this workout?";
+  showConfirm(msg, doFinishWorkout, {confirmLabel:"Finish"});
+}
+function doFinishWorkout(){
+  state.active.finishedAt = new Date().toISOString();
+  state.workouts.push(state.active);
+  saveWorkouts(state.workouts);
+  state.active = null;
+  saveActive(null);
+  state.route="history";
+  render();
+  showToast("Workout saved");
+}
+
+function deleteWorkout(id){
+  showConfirm("Delete this workout from history? This can't be undone.", ()=>doDeleteWorkout(id), {confirmLabel:"Delete", danger:true});
+}
+function doDeleteWorkout(id){
+  state.workouts = state.workouts.filter(w=>w.id!==id);
+  saveWorkouts(state.workouts);
+  if(state.route==="detail") state.route="history";
+  render();
+}
+
+function openPicker(){
+  state.picker = {open:true, search:"", category:"All", supersetMode:false, pendingSelection:[]};
+  render();
+  const inp = document.getElementById("picker-search");
+  if(inp) inp.focus();
+}
+function closePicker(){
+  state.picker.open=false;
+  render();
+}
+
+function openNewExerciseModal(){
+  state.newExerciseOpen = true;
+  render();
+  const inp = document.getElementById("newex-name");
+  if(inp) inp.focus();
+}
+
+function submitNewExercise(){
+  const nameInp = document.getElementById("newex-name");
+  const catSel = document.getElementById("newex-category");
+  const equipSel = document.getElementById("newex-equipment");
+  const name = nameInp.value.trim();
+  if(!name){ showToast("Enter an exercise name"); nameInp.focus(); return; }
+  if(!catSel.value){ showToast("Choose a category"); catSel.focus(); return; }
+  if(!equipSel.value){ showToast("Choose an equipment type"); equipSel.focus(); return; }
+  addCustomExercise(name, catSel.value, equipSel.value);
+  state.newExerciseOpen = false;
+  render();
+  showToast(name + " added");
+}
+
+function openNewTemplateModal(){
+  state.newTemplate = {name:"", search:"", category:"All", selected:[], editIdx:null};
+  render();
+  const inp = document.getElementById("newtpl-name");
+  if(inp) inp.focus();
+}
+
+function openEditTemplateModal(idx){
+  const t = TEMPLATES[idx];
+  state.newTemplate = {name:t.name, search:"", category:"All", selected:t.exerciseIds.slice(), editIdx:idx};
+  render();
+  const inp = document.getElementById("newtpl-name");
+  if(inp) inp.focus();
+}
+
+function toggleTemplateExerciseSelection(exId){
+  const t = state.newTemplate;
+  const idx = t.selected.indexOf(exId);
+  if(idx>=0) t.selected.splice(idx,1);
+  else t.selected.push(exId);
+  patchList("newtpl-ex-list", buildTemplateRows);
+  patchHtml("newtpl-footer", buildTemplateFooter);
+}
+
+function submitNewTemplate(){
+  const t = state.newTemplate;
+  const nameInp = document.getElementById("newtpl-name");
+  const name = nameInp.value.trim();
+  if(!name){ showToast("Enter a template name"); nameInp.focus(); return; }
+  if(t.selected.length===0){ showToast("Select at least 1 exercise"); return; }
+  if(t.editIdx!=null){
+    const tpl = TEMPLATES[t.editIdx];
+    tpl.name = name;
+    tpl.exerciseIds = t.selected.slice();
+    saveCustomTemplates();
+    showToast(name + " template updated");
+  } else {
+    addCustomTemplate(name, t.selected.slice());
+    showToast(name + " template created");
+  }
+  state.newTemplate = null;
+  render();
+}
+
+function toggleExerciseSelection(exId){
+  const p = state.picker;
+  const idx = p.pendingSelection.indexOf(exId);
+  if(idx>=0){
+    p.pendingSelection.splice(idx,1);
+  } else {
+    const existingBlock = state.active.blocks.find(b=>b.exerciseId===exId);
+    if(existingBlock && existingBlock.supersetId){
+      showToast("Remove it from the superset on the workout screen");
+      return;
+    } else if(existingBlock){
+      state.active.blocks = state.active.blocks.filter(b=>b!==existingBlock);
+      saveActive(state.active);
+      showToast(findExercise(exId).name + " removed");
+    } else {
+      p.pendingSelection.push(exId);
+    }
+  }
+  patchList("picker-ex-list", buildPickerRows);
+  patchHtml("picker-footer", buildPickerFooter);
+}
+
+function confirmAddExercises(){
+  const p = state.picker;
+  if(p.pendingSelection.length===0) return;
+  p.pendingSelection.forEach(exId=>{
+    state.active.blocks.push({id:uid(), supersetId:null, exerciseId:exId, sets:[newSet()]});
+  });
+  saveActive(state.active);
+  showToast(p.pendingSelection.length + (p.pendingSelection.length===1 ? " exercise added" : " exercises added"));
+  p.pendingSelection = [];
+  patchList("picker-ex-list", buildPickerRows);
+  patchHtml("picker-footer", buildPickerFooter);
+}
+
+function togglePendingSelection(exId){
+  const p = state.picker;
+  const idx = p.pendingSelection.indexOf(exId);
+  if(idx>=0) p.pendingSelection.splice(idx,1);
+  else p.pendingSelection.push(exId);
+  patchList("picker-ex-list", buildPickerRows);
+  patchHtml("picker-footer", buildPickerFooter);
+}
+
+function confirmSuperset(){
+  const p = state.picker;
+  if(p.pendingSelection.length<2) return;
+  const supersetId = uid();
+  p.pendingSelection.forEach(exId=>{
+    state.active.blocks.push({id:uid(), supersetId, exerciseId:exId, sets:[newSet()]});
+  });
+  saveActive(state.active);
+  showToast("Superset added (" + p.pendingSelection.length + " exercises)");
+  p.pendingSelection = [];
+  p.supersetMode = false;
+  render();
+}
+
+function removeBlock(blockId){
+  state.active.blocks = state.active.blocks.filter(b=>b.id!==blockId);
+  saveActive(state.active);
+  render();
+}
+
+function addSet(blockId){
+  const b = state.active.blocks.find(x=>x.id===blockId);
+  const last = b.sets[b.sets.length-1];
+  b.sets.push(newSet(last?last.weight:"", last?last.reps:""));
+  saveActive(state.active);
+  render();
+}
+
+function deleteSet(blockId, setId){
+  const b = state.active.blocks.find(x=>x.id===blockId);
+  b.sets = b.sets.filter(s=>s.id!==setId);
+  if(b.sets.length===0) b.sets.push(newSet());
+  saveActive(state.active);
+  render();
+}
+
+function updateSetField(blockId, setId, field, value){
+  const b = state.active.blocks.find(x=>x.id===blockId);
+  const s = b.sets.find(x=>x.id===setId);
+  s[field] = value;
+  saveActive(state.active);
+}
+
+function toggleDone(blockId, setId){
+  const b = state.active.blocks.find(x=>x.id===blockId);
+  const s = b.sets.find(x=>x.id===setId);
+  s.done = !s.done;
+  saveActive(state.active);
+  render();
+}
+
+/* ==================== TIMER ==================== */
+let timerInterval=null;
+function startTimerLoop(){
+  stopTimerLoop();
+  updateTimerDisplay();
+  timerInterval = setInterval(updateTimerDisplay, 1000);
+}
+function stopTimerLoop(){
+  if(timerInterval){ clearInterval(timerInterval); timerInterval=null; }
+}
+function updateTimerDisplay(){
+  const el = document.getElementById("workout-timer");
+  if(!el || !state.active) return;
+  const secs = Math.max(0, Math.floor((Date.now() - new Date(state.active.startedAt).getTime())/1000));
+  const m = Math.floor(secs/60), s = secs%60;
+  el.textContent = m + ":" + String(s).padStart(2,"0");
+}
+
+/* ==================== EVENT BINDING ==================== */
+function bindEvents(){
+  const app = document.getElementById("app");
+
+  app.querySelectorAll("[data-action]").forEach(el=>{
+    const action = el.getAttribute("data-action");
+    if(action==="set-weight" || action==="set-reps" || action==="search-input" || action==="exbrowse-search-input" || action==="newtpl-search-input") return; // handled via input listener
+    el.addEventListener("click", (ev)=>{
+      ev.stopPropagation();
+      handleAction(action, el);
+    });
+  });
+
+  app.querySelectorAll('input[data-action="set-weight"]').forEach(inp=>{
+    inp.addEventListener("input", ()=> updateSetField(inp.dataset.block, inp.dataset.set, "weight", inp.value));
+  });
+  app.querySelectorAll('input[data-action="set-reps"]').forEach(inp=>{
+    inp.addEventListener("input", ()=> updateSetField(inp.dataset.block, inp.dataset.set, "reps", inp.value));
+  });
+
+  // Search inputs patch only their results list in place (not a full render()) so the
+  // input never gets recreated/refocused while typing — that refocus-on-every-keystroke
+  // was what made the page appear to jump/bounce as you typed.
+  const searchInp = document.getElementById("picker-search");
+  if(searchInp){
+    searchInp.addEventListener("input", ()=>{
+      state.picker.search = searchInp.value;
+      patchList("picker-ex-list", buildPickerRows);
+    });
+  }
+
+  const exSearchInp = document.getElementById("exbrowse-search");
+  if(exSearchInp){
+    exSearchInp.addEventListener("input", ()=>{
+      state.exBrowse.search = exSearchInp.value;
+      patchList("exbrowse-list", buildExBrowseRows);
+    });
+  }
+
+  const newTplNameInp = document.getElementById("newtpl-name");
+  if(newTplNameInp){
+    newTplNameInp.addEventListener("input", ()=>{ state.newTemplate.name = newTplNameInp.value; });
+  }
+  const newTplSearchInp = document.getElementById("newtpl-search");
+  if(newTplSearchInp){
+    newTplSearchInp.addEventListener("input", ()=>{
+      state.newTemplate.search = newTplSearchInp.value;
+      patchList("newtpl-ex-list", buildTemplateRows);
+    });
+  }
+}
+
+function bindActionsWithin(container){
+  container.querySelectorAll("[data-action]").forEach(el=>{
+    el.addEventListener("click", (ev)=>{
+      ev.stopPropagation();
+      handleAction(el.getAttribute("data-action"), el);
+    });
+  });
+}
+
+function patchList(containerId, buildRowsFn){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  el.innerHTML = buildRowsFn();
+  bindActionsWithin(el);
+}
+
+function patchHtml(containerId, buildHtmlFn){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  el.innerHTML = buildHtmlFn();
+  bindActionsWithin(el);
+}
+
+function handleAction(action, el){
+  switch(action){
+    case "start-workout": startWorkout(); break;
+    case "resume-workout": state.route="workout"; render(); break;
+    case "discard-workout": discardWorkout(); break;
+    case "finish-workout": finishWorkout(); break;
+    case "view-detail": state.detailId = el.dataset.id; state.route="detail"; render(); break;
+    case "back-history": state.route="history"; render(); break;
+    case "delete-workout": deleteWorkout(el.dataset.id); break;
+    case "nav-tab": state.route = el.dataset.tab; render(); break;
+    case "view-template": state.tplDetailIdx = parseInt(el.dataset.idx,10); state.route="tpldetail"; render(); break;
+    case "edit-template": openEditTemplateModal(parseInt(el.dataset.idx,10)); break;
+    case "back-to-start": state.route="start"; render(); break;
+    case "start-template": startWorkoutFromTemplate(parseInt(el.dataset.idx,10)); break;
+    case "view-exercise": state.exDetailId = el.dataset.id; state.route="exdetail"; render(); break;
+    case "back-exercises": state.route="exercises"; render(); break;
+    case "exbrowse-category": state.exBrowse.category = el.dataset.cat; render(); break;
+    case "open-new-exercise": openNewExerciseModal(); break;
+    case "close-new-exercise": state.newExerciseOpen = false; render(); break;
+    case "save-new-exercise": submitNewExercise(); break;
+    case "open-new-template": openNewTemplateModal(); break;
+    case "close-new-template": state.newTemplate = null; render(); break;
+    case "newtpl-category": state.newTemplate.category = el.dataset.cat; render(); break;
+    case "toggle-template-exercise": toggleTemplateExerciseSelection(el.dataset.id); break;
+    case "save-new-template": submitNewTemplate(); break;
+    case "open-picker": openPicker(); break;
+    case "close-picker": closePicker(); break;
+    case "pick-category": state.picker.category = el.dataset.cat; render(); break;
+    case "toggle-superset-mode":
+      state.picker.supersetMode = !state.picker.supersetMode;
+      state.picker.pendingSelection = [];
+      render();
+      break;
+    case "pick-exercise":
+      if(state.picker.supersetMode) togglePendingSelection(el.dataset.id);
+      else toggleExerciseSelection(el.dataset.id);
+      break;
+    case "confirm-superset": confirmSuperset(); break;
+    case "confirm-add-exercises": confirmAddExercises(); break;
+    case "remove-block": removeBlock(el.dataset.block); break;
+    case "add-set": addSet(el.dataset.block); break;
+    case "delete-set": deleteSet(el.dataset.block, el.dataset.set); break;
+    case "toggle-done": toggleDone(el.dataset.block, el.dataset.set); break;
+    case "confirm-yes": { const cb = state.confirm.onConfirm; state.confirm = null; cb(); break; }
+    case "confirm-no": state.confirm = null; render(); break;
+  }
+}
+/* ==================== INIT ==================== */
+if(state.active) state.route="workout";
+render();
+
+// Service workers only exist on https or localhost; skipped elsewhere (e.g. plain-http LAN testing).
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+}
+</script>
+</body>
+</html>
