@@ -1,6 +1,6 @@
 // Network-first so edits show up immediately; falls back to cache when offline.
 const CACHE = "rm-fitness-v1";
-const FILES = ["./fitnessapp.html", "./manifest.webmanifest", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
+const FILES = ["./index.html","./manifest.webmanifest", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
