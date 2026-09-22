@@ -1,6 +1,6 @@
 // Network-first so edits show up immediately; falls back to cache when offline.
-const CACHE = "rm-fitness-v1";
-const FILES = ["./index.html","./manifest.webmanifest", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
+const CACHE = "rm-fitness-v2";
+const FILES = ["./index.html", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
@@ -15,8 +15,10 @@ self.addEventListener("activate", e => {
 
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
+  // cache:"reload" forces this past the browser's own HTTP cache, not just our
+  // Cache Storage — otherwise "network-first" could still be served stale.
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: "reload" })
       .then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy));
