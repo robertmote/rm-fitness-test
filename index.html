@@ -267,6 +267,24 @@
   .form-field select:invalid{color:var(--muted);}
   .form-field select option{color:var(--text); background:var(--surface2);}
 
+  /* ---------- Achievements ---------- */
+  .ach-card{
+    display:flex; align-items:center; gap:12px;
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:14px; margin-bottom:10px;
+  }
+  .ach-card.locked{opacity:0.55;}
+  .ach-icon{font-size:26px; width:40px; text-align:center; flex-shrink:0;}
+  .ach-body{flex:1; min-width:0;}
+  .ach-name{font-size:15px; font-weight:700;}
+  .ach-desc{font-size:12.5px; color:var(--muted); margin-top:2px;}
+  .ach-status{flex-shrink:0; text-align:right;}
+  .ach-unlocked-badge{
+    font-size:11px; font-weight:700; color:var(--good);
+    background:rgba(61,220,132,0.12); padding:4px 8px; border-radius:999px; white-space:nowrap;
+  }
+  .ach-progress{font-size:12px; color:var(--muted); font-weight:600; white-space:nowrap;}
+
   /* ---------- Templates ---------- */
   .template-grid{display:grid; grid-template-columns:repeat(2, 1fr); gap:10px;}
   .template-card{
@@ -565,6 +583,11 @@ const EXERCISES = [
   {n:"Thruster", c:"Olympic", e:"Barbell"},
   {n:"Kettlebell Swing", c:"Olympic", e:"Kettlebell"},
   {n:"Farmer's Carry", c:"Olympic", e:"Dumbbell"},
+
+  // Appended after the fact — new entries go at the end, never inserted mid-list,
+  // since ex_N ids are assigned by array index and any saved workout history
+  // references those ids directly.
+  {n:"Incline Smith Machine Bench Press", c:"Chest", e:"Smith Machine"},
 ].map((x,i)=>({id:"ex_"+i, name:x.n, category:x.c, equipment:x.e}));
 
 const CATEGORIES = ["All", ...Array.from(new Set(EXERCISES.map(e=>e.category)))];
@@ -640,6 +663,7 @@ const state = {
   exDetailId: null,
   tplDetailIdx: null,
   summaryWorkout: null,
+  newAchievements: [],
   confirm: null,   // {message, confirmLabel, danger, onConfirm}
   newExerciseOpen: false,
   newTemplate: null,   // {name, search, category, selected} while the New Template sheet is open
@@ -697,6 +721,208 @@ function buildHistoryBox(exerciseId){
     </div>`;
 }
 
+/* ==================== ACHIEVEMENTS ==================== */
+// All achievement state is derived live from state.workouts (+ custom exercise/template
+// flags) every time it's needed — no separate "unlocked" store to keep in sync or drift
+// from the underlying history, same philosophy as getExerciseHistory().
+function periodKeyWeek(d){
+  const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  date.setDate(date.getDate() - date.getDay()); // align to start of week (Sunday)
+  return Math.floor(date.getTime() / (7*24*60*60*1000));
+}
+function periodKeyMonth(d){ return d.getFullYear()*12 + d.getMonth(); }
+function periodKeyYear(d){ return d.getFullYear(); }
+
+// Longest run of consecutive periods (by the given key function) ending at the most
+// recent period that has a workout — so an in-progress period with nothing logged yet
+// doesn't prematurely show the streak as broken.
+function currentStreak(workouts, keyFn){
+  if(!workouts.length) return 0;
+  const keys = new Set(workouts.map(w=>keyFn(new Date(w.finishedAt))));
+  let cursor = Math.max(...keys);
+  let count = 0;
+  while(keys.has(cursor)){ count++; cursor--; }
+  return count;
+}
+
+function hasAnyProgressivePR(workouts){
+  const sorted = workouts.slice().sort((a,b)=> new Date(a.finishedAt)-new Date(b.finishedAt));
+  const bestSoFar = {};
+  for(const w of sorted){
+    for(const b of w.blocks){
+      for(const s of b.sets){
+        const wt = parseFloat(s.weight);
+        if(isNaN(wt)) continue;
+        const prev = bestSoFar[b.exerciseId];
+        if(prev !== undefined && wt > prev) return true;
+        bestSoFar[b.exerciseId] = Math.max(prev===undefined?-Infinity:prev, wt);
+      }
+    }
+  }
+  return false;
+}
+
+// True if any single calendar year has at least one workout in every month (Jan-Dec).
+function hasFullCalendarYear(workouts){
+  const monthsByYear = {};
+  workouts.forEach(w=>{
+    const d = new Date(w.finishedAt);
+    const y = d.getFullYear();
+    if(!monthsByYear[y]) monthsByYear[y] = new Set();
+    monthsByYear[y].add(d.getMonth());
+  });
+  return Object.values(monthsByYear).some(months => months.size >= 12);
+}
+
+// Flat or incline bench press only (no decline), Smith Machine or free weight (barbell/dumbbell).
+const BENCH_PRESS_NAMES = new Set([
+  "Barbell Bench Press",
+  "Incline Barbell Bench Press",
+  "Dumbbell Bench Press",
+  "Incline Dumbbell Bench Press",
+  "Smith Machine Bench Press",
+  "Incline Smith Machine Bench Press",
+]);
+function maxBenchPressWeight(workouts){
+  let max = 0;
+  workouts.forEach(w=>w.blocks.forEach(b=>{
+    const ex = findExercise(b.exerciseId);
+    if(!ex || !BENCH_PRESS_NAMES.has(ex.name)) return;
+    b.sets.forEach(s=>{
+      const wt = parseFloat(s.weight);
+      if(!isNaN(wt)) max = Math.max(max, wt);
+    });
+  }));
+  return max;
+}
+
+function countWorkoutsWithCategory(workouts, categories){
+  return workouts.filter(w => w.blocks.some(b=>{
+    const ex = findExercise(b.exerciseId);
+    return ex && categories.includes(ex.category);
+  })).length;
+}
+function countUniqueExercisesInCategory(workouts, categories){
+  const set = new Set();
+  workouts.forEach(w=>w.blocks.forEach(b=>{
+    const ex = findExercise(b.exerciseId);
+    if(ex && categories.includes(ex.category)) set.add(b.exerciseId);
+  }));
+  return set.size;
+}
+function hasWellRoundedWorkout(workouts){
+  const majors = ["Chest","Back","Shoulders","Legs","Core"];
+  return workouts.some(w=>{
+    const cats = new Set(w.blocks.map(b=>{ const ex=findExercise(b.exerciseId); return ex?ex.category:null; }));
+    return majors.every(c=>cats.has(c));
+  });
+}
+function hasAllCategoriesEver(workouts){
+  const allCats = CATEGORIES.filter(c=>c!=="All");
+  const used = new Set();
+  workouts.forEach(w=>w.blocks.forEach(b=>{ const ex=findExercise(b.exerciseId); if(ex) used.add(ex.category); }));
+  return allCats.every(c=>used.has(c));
+}
+
+function computeAchievementStats(workouts){
+  let maxWeight=0, bestTotalReps=0, bestSetCount=0, maxSetReps=0;
+  const uniqueExercises = new Set();
+  workouts.forEach(w=>{
+    let workoutReps=0, workoutSets=0;
+    w.blocks.forEach(b=>{
+      uniqueExercises.add(b.exerciseId);
+      b.sets.forEach(s=>{
+        const wt = parseFloat(s.weight), rp = parseFloat(s.reps);
+        if(!isNaN(wt)) maxWeight = Math.max(maxWeight, wt);
+        if(!isNaN(rp)){ maxSetReps = Math.max(maxSetReps, rp); workoutReps += rp; }
+        if(s.weight!==""&&s.reps!=="") workoutSets++;
+      });
+    });
+    bestTotalReps = Math.max(bestTotalReps, workoutReps);
+    bestSetCount = Math.max(bestSetCount, workoutSets);
+  });
+
+  return {
+    totalWorkouts: workouts.length,
+    weekStreak: currentStreak(workouts, periodKeyWeek),
+    monthStreak: currentStreak(workouts, periodKeyMonth),
+    yearStreak: currentStreak(workouts, periodKeyYear),
+    maxWeight, bestTotalReps, bestSetCount, maxSetReps,
+    uniqueExercises: uniqueExercises.size,
+    hasProgressivePR: hasAnyProgressivePR(workouts),
+    hasFullCalendarYear: hasFullCalendarYear(workouts),
+    maxBenchWeight: maxBenchPressWeight(workouts),
+    chestWorkouts: countWorkoutsWithCategory(workouts, ["Chest"]),
+    backWorkouts: countWorkoutsWithCategory(workouts, ["Back"]),
+    legWorkouts: countWorkoutsWithCategory(workouts, ["Legs"]),
+    shoulderWorkouts: countWorkoutsWithCategory(workouts, ["Shoulders"]),
+    armWorkouts: countWorkoutsWithCategory(workouts, ["Biceps","Triceps"]),
+    coreWorkouts: countWorkoutsWithCategory(workouts, ["Core"]),
+    chestVariety: countUniqueExercisesInCategory(workouts, ["Chest"]),
+    backVariety: countUniqueExercisesInCategory(workouts, ["Back"]),
+    legVariety: countUniqueExercisesInCategory(workouts, ["Legs"]),
+    hasWellRounded: hasWellRoundedWorkout(workouts),
+    hasAllCategories: hasAllCategoriesEver(workouts),
+    hasCustomExercise: EXERCISES.some(e=>e.custom),
+    hasCustomTemplate: TEMPLATES.some(t=>t.custom),
+    hasSuperset: workouts.some(w=>w.blocks.some(b=>b.supersetId)),
+    hasEarlyBird: workouts.some(w=> w.startedAt && new Date(w.startedAt).getHours() < 7),
+    hasNightOwl: workouts.some(w=> w.startedAt && new Date(w.startedAt).getHours() >= 21),
+    hasMarathon: workouts.some(w=> w.startedAt && w.finishedAt && (new Date(w.finishedAt)-new Date(w.startedAt))/60000 >= 60),
+  };
+}
+
+const ACHIEVEMENTS = [
+  {id:"first-rep", name:"First Rep", desc:"Complete your first workout", icon:"\u{1F947}", cat:"Milestones", check:s=>s.totalWorkouts>=1, progress:s=>[s.totalWorkouts,1]},
+  {id:"getting-started", name:"Getting Started", desc:"Complete 5 workouts", icon:"\u{1F948}", cat:"Milestones", check:s=>s.totalWorkouts>=5, progress:s=>[s.totalWorkouts,5]},
+  {id:"committed", name:"Committed", desc:"Complete 25 workouts", icon:"\u{1F3C5}", cat:"Milestones", check:s=>s.totalWorkouts>=25, progress:s=>[s.totalWorkouts,25]},
+  {id:"iron-regular", name:"Iron Regular", desc:"Complete 50 workouts", icon:"\u{1F396}\u{FE0F}", cat:"Milestones", check:s=>s.totalWorkouts>=50, progress:s=>[s.totalWorkouts,50]},
+  {id:"centurion", name:"Centurion", desc:"Complete 100 workouts", icon:"\u{1F3C6}", cat:"Milestones", check:s=>s.totalWorkouts>=100, progress:s=>[s.totalWorkouts,100]},
+
+  {id:"on-a-roll", name:"On a Roll", desc:"Work out 2 weeks in a row", icon:"\u{1F525}", cat:"Streaks", check:s=>s.weekStreak>=2, progress:s=>[s.weekStreak,2]},
+  {id:"steady-grind", name:"Steady Grind", desc:"Work out 4 weeks in a row", icon:"\u{1F525}", cat:"Streaks", check:s=>s.weekStreak>=4, progress:s=>[s.weekStreak,4]},
+  {id:"unbreakable", name:"Unbreakable", desc:"Work out 8 weeks in a row", icon:"\u{1F525}", cat:"Streaks", check:s=>s.weekStreak>=8, progress:s=>[s.weekStreak,8]},
+  {id:"two-month-streak", name:"Two-Month Streak", desc:"Work out 2 months in a row", icon:"\u{1F4C6}", cat:"Streaks", check:s=>s.monthStreak>=2, progress:s=>[s.monthStreak,2]},
+  {id:"half-year-habit", name:"Half-Year Habit", desc:"Work out 6 months in a row", icon:"\u{1F4C6}", cat:"Streaks", check:s=>s.monthStreak>=6, progress:s=>[s.monthStreak,6]},
+  {id:"year-round", name:"Year-Round", desc:"Work out at least once in every month of a calendar year", icon:"\u{1F4C5}", cat:"Streaks", check:s=>s.hasFullCalendarYear},
+  {id:"one-year-strong", name:"Two Year Streak", desc:"Work out 2 years in a row", icon:"\u{1F5D3}\u{FE0F}", cat:"Streaks", check:s=>s.yearStreak>=2, progress:s=>[s.yearStreak,2]},
+  {id:"lifer", name:"Lifer", desc:"Work out 5 years in a row", icon:"\u{1F5D3}\u{FE0F}", cat:"Streaks", check:s=>s.yearStreak>=5, progress:s=>[s.yearStreak,5]},
+
+  {id:"new-record", name:"New Record", desc:"Beat your own best weight on any exercise", icon:"\u{1F4C8}", cat:"Strength PRs", check:s=>s.hasProgressivePR},
+  {id:"triple-digits", name:"Triple Digits", desc:"Log 100+ lb on any exercise", icon:"\u{1F4AF}", cat:"Strength PRs", check:s=>s.maxWeight>=100},
+  {id:"quarter-ton", name:"Quarter Ton", desc:"Log 225+ lb on any exercise", icon:"\u{2699}\u{FE0F}", cat:"Strength PRs", check:s=>s.maxWeight>=225},
+  {id:"four-plates", name:"Three Plates", desc:"Log 315+ lb on any exercise", icon:"\u{1F3CB}\u{FE0F}", cat:"Strength PRs", check:s=>s.maxWeight>=315},
+  {id:"bench-225", name:"225 Bench Club", desc:"Log 225+ lb on a flat or incline bench press (Smith Machine or free weight)", icon:"\u{1F3CB}\u{FE0F}", cat:"Strength PRs", check:s=>s.maxBenchWeight>=225},
+  {id:"bench-315", name:"315 Bench Club", desc:"Log 315+ lb on a flat or incline bench press (Smith Machine or free weight)", icon:"\u{1F3CB}\u{FE0F}", cat:"Strength PRs", check:s=>s.maxBenchWeight>=315},
+
+  {id:"rep-master", name:"Rep Master", desc:"Log 100+ total reps in one workout", icon:"\u{1F501}", cat:"Volume", check:s=>s.bestTotalReps>=100, progress:s=>[s.bestTotalReps,100]},
+  {id:"high-volume", name:"High Volume", desc:"Complete 20+ sets in one workout", icon:"\u{1F4CA}", cat:"Volume", check:s=>s.bestSetCount>=20, progress:s=>[s.bestSetCount,20]},
+  {id:"grinder", name:"Grinder", desc:"Log a single set of 20+ reps", icon:"\u{26A1}", cat:"Volume", check:s=>s.maxSetReps>=20, progress:s=>[s.maxSetReps,20]},
+
+  {id:"explorer", name:"Explorer", desc:"Perform 10 different exercises", icon:"\u{1F9ED}", cat:"Variety", check:s=>s.uniqueExercises>=10, progress:s=>[s.uniqueExercises,10]},
+  {id:"custom-creator", name:"Custom Creator", desc:"Create your first custom exercise", icon:"\u{1F6E0}\u{FE0F}", cat:"Variety", check:s=>s.hasCustomExercise},
+  {id:"architect", name:"Architect", desc:"Create your first custom template", icon:"\u{1F4D0}", cat:"Variety", check:s=>s.hasCustomTemplate},
+  {id:"superset-specialist", name:"Superset Specialist", desc:"Complete a workout with a superset", icon:"\u{26A1}", cat:"Variety", check:s=>s.hasSuperset},
+
+  {id:"early-bird", name:"Early Bird", desc:"Start a workout before 7am", icon:"\u{1F305}", cat:"Time-Based", check:s=>s.hasEarlyBird},
+  {id:"night-owl", name:"Night Owl", desc:"Start a workout after 9pm", icon:"\u{1F319}", cat:"Time-Based", check:s=>s.hasNightOwl},
+  {id:"marathon", name:"Marathon", desc:"Complete a workout lasting 60+ minutes", icon:"\u{23F3}", cat:"Time-Based", check:s=>s.hasMarathon},
+
+  {id:"chest-day-regular", name:"Chest Day Regular", desc:"Complete 20 workouts with a Chest exercise", icon:"\u{1F3CB}\u{FE0F}", cat:"Body Parts", check:s=>s.chestWorkouts>=20, progress:s=>[s.chestWorkouts,20]},
+  {id:"back-day-regular", name:"Back Day Regular", desc:"Complete 20 workouts with a Back exercise", icon:"\u{1F98D}", cat:"Body Parts", check:s=>s.backWorkouts>=20, progress:s=>[s.backWorkouts,20]},
+  {id:"leg-day-warrior", name:"Leg Day Warrior", desc:"Complete 20 workouts with a Legs exercise", icon:"\u{1F9B5}", cat:"Body Parts", check:s=>s.legWorkouts>=20, progress:s=>[s.legWorkouts,20]},
+  {id:"shoulder-season", name:"Shoulder Season", desc:"Complete 20 workouts with a Shoulders exercise", icon:"\u{1F937}", cat:"Body Parts", check:s=>s.shoulderWorkouts>=20, progress:s=>[s.shoulderWorkouts,20]},
+  {id:"arm-day", name:"Arm Day", desc:"Complete 20 workouts with a Biceps or Triceps exercise", icon:"\u{1F4AA}", cat:"Body Parts", check:s=>s.armWorkouts>=20, progress:s=>[s.armWorkouts,20]},
+  {id:"core-value", name:"Core Value", desc:"Complete 20 workouts with a Core exercise", icon:"\u{1F9F1}", cat:"Body Parts", check:s=>s.coreWorkouts>=20, progress:s=>[s.coreWorkouts,20]},
+
+  {id:"chest-connoisseur", name:"Chest Connoisseur", desc:"Perform 5 different Chest exercises", icon:"\u{1F377}", cat:"Body Parts", check:s=>s.chestVariety>=5, progress:s=>[s.chestVariety,5]},
+  {id:"back-builder", name:"Back Builder", desc:"Perform 5 different Back exercises", icon:"\u{1F3D7}\u{FE0F}", cat:"Body Parts", check:s=>s.backVariety>=5, progress:s=>[s.backVariety,5]},
+  {id:"leg-day-library", name:"Leg Day Library", desc:"Perform 5 different Legs exercises", icon:"\u{1F4DA}", cat:"Body Parts", check:s=>s.legVariety>=5, progress:s=>[s.legVariety,5]},
+
+  {id:"well-rounded", name:"Well-Rounded", desc:"Train Chest, Back, Shoulders, Legs, and Core in a single workout", icon:"\u{1F31F}", cat:"Body Parts", check:s=>s.hasWellRounded},
+  {id:"jack-of-all-trades", name:"Jack of All Trades", desc:"Perform at least one exercise from every muscle group category", icon:"\u{1F0CF}", cat:"Body Parts", check:s=>s.hasAllCategories},
+];
+
 /* ==================== TOAST ==================== */
 let toastTimer=null;
 function showToast(msg){
@@ -708,11 +934,14 @@ function showToast(msg){
 }
 
 /* ==================== RENDER ROOT ==================== */
+let lastRenderedRoute = null;
 function render(){
+  const routeChanged = state.route !== lastRenderedRoute;
   const app = document.getElementById("app");
   if(state.route==="start") app.innerHTML = renderStart();
   else if(state.route==="history") app.innerHTML = renderHistoryTab();
   else if(state.route==="exercises") app.innerHTML = renderExercisesTab();
+  else if(state.route==="achievements") app.innerHTML = renderAchievementsTab();
   else if(state.route==="exdetail") app.innerHTML = renderExerciseDetail();
   else if(state.route==="tpldetail") app.innerHTML = renderTemplateDetail();
   else if(state.route==="summary") app.innerHTML = renderWorkoutSummary();
@@ -732,6 +961,8 @@ function render(){
     app.insertAdjacentHTML("beforeend", renderNewTemplateModal());
   }
   bindEvents();
+  if(routeChanged) window.scrollTo(0,0);
+  lastRenderedRoute = state.route;
   if(state.route==="workout" && state.active) startTimerLoop();
   else stopTimerLoop();
 }
@@ -741,7 +972,8 @@ function renderBottomNav(active){
   const tabs = [
     {key:"history", label:"History", icon:"&#9201;"},
     {key:"start", label:"Start Workout", icon:"&#127947;"},
-    {key:"exercises", label:"Exercises", icon:"&#128203;"}
+    {key:"exercises", label:"Exercises", icon:"&#128203;"},
+    {key:"achievements", label:"Achievements", icon:"&#127942;"}
   ];
   return `
     <div class="bottom-nav">
@@ -874,6 +1106,54 @@ function renderExercisesTab(){
     </div>
     <div class="bottom-fixed">
       ${renderBottomNav("exercises")}
+    </div>
+  `;
+}
+
+/* ==================== ACHIEVEMENTS ==================== */
+function buildAchievementCard(a, stats){
+  const unlocked = a.check(stats);
+  const progress = a.progress ? a.progress(stats) : null;
+  const statusHtml = unlocked
+    ? `<div class="ach-unlocked-badge">Unlocked</div>`
+    : (progress ? `<div class="ach-progress">${Math.min(progress[0],progress[1])}/${progress[1]}</div>` : `<div class="ach-progress">Locked</div>`);
+  return `
+    <div class="ach-card ${unlocked?'':'locked'}">
+      <div class="ach-icon">${a.icon}</div>
+      <div class="ach-body">
+        <div class="ach-name">${a.name}</div>
+        <div class="ach-desc">${a.desc}</div>
+      </div>
+      <div class="ach-status">${statusHtml}</div>
+    </div>`;
+}
+
+function renderAchievementsTab(){
+  const stats = computeAchievementStats(state.workouts);
+  const unlockedCount = ACHIEVEMENTS.filter(a=>a.check(stats)).length;
+
+  const categories = [];
+  ACHIEVEMENTS.forEach(a=>{
+    let cat = categories.find(c=>c.name===a.cat);
+    if(!cat){ cat = {name:a.cat, items:[]}; categories.push(cat); }
+    cat.items.push(a);
+  });
+
+  const sections = categories.map(cat=>`
+    <div class="section-title" style="${cat===categories[0]?'margin-top:0;':''}">${cat.name}</div>
+    ${cat.items.map(a=>buildAchievementCard(a, stats)).join("")}
+  `).join("");
+
+  return `
+    <div class="appbar">
+      <h1>Achievements</h1>
+    </div>
+    <div class="screen">
+      <div style="color:var(--muted); font-size:13px; margin-bottom:16px;">${unlockedCount} / ${ACHIEVEMENTS.length} unlocked</div>
+      ${sections}
+    </div>
+    <div class="bottom-fixed">
+      ${renderBottomNav("achievements")}
     </div>
   `;
 }
@@ -1109,6 +1389,18 @@ function renderWorkoutSummary(){
           ${durMin ? "Time: " + durMin + " min" : ""}${durMin ? " &middot; " : ""}${w.blocks.length} exercise${w.blocks.length===1?"":"s"} &middot; ${setCount} set${setCount===1?"":"s"}
         </div>
       </div>
+      ${state.newAchievements.length ? `
+        <div class="section-title" style="margin-top:0;">New Achievements</div>
+        ${state.newAchievements.map(a=>`
+          <div class="ach-card">
+            <div class="ach-icon">${a.icon}</div>
+            <div class="ach-body">
+              <div class="ach-name">${a.name}</div>
+              <div class="ach-desc">${a.desc}</div>
+            </div>
+            <div class="ach-status"><div class="ach-unlocked-badge">Unlocked</div></div>
+          </div>`).join("")}
+      ` : ""}
       <div class="section-title" style="margin-top:0;">Summary</div>
       ${buildWorkoutContent(w)}
     </div>
@@ -1318,9 +1610,12 @@ function finishWorkout(){
   showConfirm(msg, doFinishWorkout, {confirmLabel:"Finish"});
 }
 function doFinishWorkout(){
+  const statsBefore = computeAchievementStats(state.workouts);
   state.active.finishedAt = new Date().toISOString();
   state.workouts.push(state.active);
   saveWorkouts(state.workouts);
+  const statsAfter = computeAchievementStats(state.workouts);
+  state.newAchievements = ACHIEVEMENTS.filter(a => !a.check(statsBefore) && a.check(statsAfter));
   state.summaryWorkout = state.active;
   state.active = null;
   saveActive(null);
@@ -1648,7 +1943,7 @@ function handleAction(action, el){
     case "toggle-done": toggleDone(el.dataset.block, el.dataset.set); break;
     case "confirm-yes": { const cb = state.confirm.onConfirm; state.confirm = null; cb(); break; }
     case "confirm-no": state.confirm = null; render(); break;
-    case "close-summary": state.summaryWorkout = null; state.route = "start"; render(); break;
+    case "close-summary": state.summaryWorkout = null; state.newAchievements = []; state.route = "start"; render(); break;
   }
 }
 /* ==================== KEYBOARD DISMISS ==================== */
