@@ -91,6 +91,24 @@
     padding:8px 12px;
     border-radius:999px;
   }
+  .rest-timer-btn{
+    background:var(--surface2);
+    border:1px solid var(--border);
+    color:var(--muted);
+    font-variant-numeric:tabular-nums;
+    font-weight:600;
+    font-size:14px;
+    padding:8px 12px;
+    border-radius:999px;
+    display:flex; align-items:center; gap:6px;
+    cursor:pointer;
+  }
+  .rest-timer-btn:active{background:var(--surface3);}
+  .rest-timer-btn.running{
+    background:rgba(61,220,132,0.12);
+    border-color:var(--good);
+    color:var(--good);
+  }
 
   /* ---------- Main scroll area ---------- */
   .screen{
@@ -219,7 +237,10 @@
   .add-set-btn{
     margin:4px 14px 14px;
     width:calc(100% - 28px);
+    color:var(--accent);
+    border-color:rgba(255,106,61,0.4);
   }
+  .add-set-btn:active{background:var(--accent-dim);}
 
   .add-exercise-fab{margin:6px 0 20px;}
 
@@ -590,6 +611,16 @@ const EXERCISES = [
   {n:"Incline Smith Machine Bench Press", c:"Chest", e:"Smith Machine"},
 ].map((x,i)=>({id:"ex_"+i, name:x.n, category:x.c, equipment:x.e}));
 
+// Built-in exercises the user deleted. Ids stay stable (assigned by position above)
+// so this filter always matches the same exercise across reloads.
+const LS_DELETED_BUILTIN = "ironlog_deleted_builtin_v1";
+function loadDeletedBuiltinIds(){ try{ return JSON.parse(localStorage.getItem(LS_DELETED_BUILTIN)) || []; }catch(e){ return []; } }
+function saveDeletedBuiltinIds(ids){ localStorage.setItem(LS_DELETED_BUILTIN, JSON.stringify(ids)); }
+{
+  const deletedBuiltinIds = new Set(loadDeletedBuiltinIds());
+  for(let i=EXERCISES.length-1; i>=0; i--){ if(deletedBuiltinIds.has(EXERCISES[i].id)) EXERCISES.splice(i,1); }
+}
+
 const CATEGORIES = ["All", ...Array.from(new Set(EXERCISES.map(e=>e.category)))];
 const EQUIPMENT_TYPES = Array.from(new Set([...EXERCISES.map(e=>e.equipment), "Free Weight"])).sort();
 
@@ -641,6 +672,41 @@ function addCustomExercise(name, category, equipment){
   return ex;
 }
 
+// Only ever deletable if nothing references it — keeps every findExercise() call
+// in the app safe to assume a hit, instead of needing null-checks everywhere.
+function isExerciseInUse(exId){
+  if(state.workouts.some(w=>w.blocks.some(b=>b.exerciseId===exId))) return true;
+  if(state.active && state.active.blocks.some(b=>b.exerciseId===exId)) return true;
+  if(TEMPLATES.some(t=>t.exerciseIds.includes(exId))) return true;
+  return false;
+}
+
+function confirmDeleteExercise(exId){
+  const ex = findExercise(exId);
+  if(!ex) return;
+  if(isExerciseInUse(exId)){
+    showToast(ex.name + " is used in a saved workout or template — can't delete it");
+    return;
+  }
+  showConfirm("Delete \"" + ex.name + "\"? This can't be undone.", ()=>deleteExercise(exId), {confirmLabel:"Delete", danger:true});
+}
+
+function deleteExercise(exId){
+  const idx = EXERCISES.findIndex(e=>e.id===exId);
+  if(idx<0) return;
+  const ex = EXERCISES[idx];
+  EXERCISES.splice(idx,1);
+  if(ex.custom){
+    saveCustomExercises();
+  } else {
+    const ids = loadDeletedBuiltinIds();
+    if(!ids.includes(exId)){ ids.push(exId); saveDeletedBuiltinIds(ids); }
+  }
+  state.route = "exercises";
+  render();
+  showToast("Exercise deleted");
+}
+
 /* ==================== CUSTOM TEMPLATES ==================== */
 const LS_CUSTOM_TEMPLATES = "ironlog_custom_templates_v1";
 function loadCustomTemplates(){ try{ return JSON.parse(localStorage.getItem(LS_CUSTOM_TEMPLATES)) || []; }catch(e){ return []; } }
@@ -664,6 +730,7 @@ const state = {
   tplDetailIdx: null,
   summaryWorkout: null,
   newAchievements: [],
+  restTimerStart: null,   // ms timestamp while the rest-timer button is running, else null
   confirm: null,   // {message, confirmLabel, danger, onConfirm}
   newExerciseOpen: false,
   newTemplate: null,   // {name, search, category, selected} while the New Template sheet is open
@@ -963,8 +1030,13 @@ function render(){
   bindEvents();
   if(routeChanged) window.scrollTo(0,0);
   lastRenderedRoute = state.route;
-  if(state.route==="workout" && state.active) startTimerLoop();
-  else stopTimerLoop();
+  if(state.route==="workout" && state.active){
+    startTimerLoop();
+    if(state.restTimerStart!=null) startRestTimerLoop(); else stopRestTimerLoop();
+  } else {
+    stopTimerLoop();
+    stopRestTimerLoop();
+  }
 }
 
 /* ==================== BOTTOM NAV ==================== */
@@ -1199,6 +1271,7 @@ function renderExerciseDetail(){
   return `
     <div class="appbar">
       <div class="icon-btn" data-action="back-exercises">&larr;</div>
+      <button class="btn btn-danger btn-sm" data-action="delete-exercise" data-id="${ex.id}">Delete</button>
     </div>
     <div class="screen">
       <div style="font-size:20px; font-weight:700; margin-bottom:4px;">${ex.name}</div>
@@ -1247,6 +1320,21 @@ function renderTemplateDetail(){
 }
 
 /* ==================== ACTIVE WORKOUT ==================== */
+function fmtClock(totalSecs){
+  const secs = Math.max(0, Math.floor(totalSecs));
+  const m = Math.floor(secs/60), s = secs%60;
+  return m + ":" + String(s).padStart(2,"0");
+}
+
+function renderRestTimerBtn(){
+  const running = state.restTimerStart != null;
+  const label = running ? fmtClock((Date.now()-state.restTimerStart)/1000) : "";
+  return `
+    <div class="rest-timer-btn ${running?'running':''}" id="rest-timer-btn" data-action="toggle-rest-timer" title="Rest timer">
+      <span>&#9202;</span><span id="rest-timer-label">${label}</span>
+    </div>`;
+}
+
 function renderWorkout(){
   const w = state.active;
   if(!w) { state.route="start"; return renderStart(); }
@@ -1275,7 +1363,11 @@ function renderWorkout(){
   return `
     <div class="appbar">
       <div class="icon-btn danger" data-action="discard-workout" title="Discard workout">&times;</div>
-      <div class="timer-pill" id="workout-timer">0:00</div>
+      <div style="display:flex; align-items:center; gap:16px;">
+        <div class="icon-btn" data-action="minimize-workout" title="Minimize &mdash; view other screens without ending this workout">&#8213;</div>
+        ${renderRestTimerBtn()}
+        <div class="timer-pill" id="workout-timer">0:00</div>
+      </div>
     </div>
     <div class="screen">
       ${empty}
@@ -1305,7 +1397,7 @@ function renderBlock(b){
   `).join("");
 
   return `
-    <div class="block">
+    <div class="block" id="block-${b.id}">
       <div class="ex-head">
         <div>
           <div class="ex-name">${ex.name}</div>
@@ -1598,6 +1690,7 @@ function discardWorkout(){
 function doDiscardWorkout(){
   state.active = null;
   saveActive(null);
+  state.restTimerStart = null;
   state.route="start";
   render();
 }
@@ -1619,6 +1712,7 @@ function doFinishWorkout(){
   state.summaryWorkout = state.active;
   state.active = null;
   saveActive(null);
+  state.restTimerStart = null;
   state.route="summary";
   render();
 }
@@ -1659,8 +1753,35 @@ function submitNewExercise(){
   if(!name){ showToast("Enter an exercise name"); nameInp.focus(); return; }
   if(!catSel.value){ showToast("Choose a category"); catSel.focus(); return; }
   if(!equipSel.value){ showToast("Choose an equipment type"); equipSel.focus(); return; }
-  addCustomExercise(name, catSel.value, equipSel.value);
+  const ex = addCustomExercise(name, catSel.value, equipSel.value);
   state.newExerciseOpen = false;
+
+  if(state.picker.open && !state.picker.supersetMode){
+    // Mid-workout, normal mode: commit it straight to the workout and bring it
+    // into view instead of leaving the user to search for what they just typed.
+    const block = {id:uid(), supersetId:null, exerciseId:ex.id, sets:[newSet()]};
+    state.active.blocks.push(block);
+    saveActive(state.active);
+    state.picker.open = false;
+    render();
+    const el = document.getElementById("block-"+block.id);
+    if(el) el.scrollIntoView({behavior:"smooth", block:"center"});
+    showToast(name + " added to workout");
+    return;
+  }
+
+  if(state.picker.open && state.picker.supersetMode){
+    // Building a superset: stage it (checked) and surface it front-and-center
+    // instead of leaving the user to search for it again.
+    if(!state.picker.pendingSelection.includes(ex.id)) state.picker.pendingSelection.push(ex.id);
+    state.picker.search = name;
+    render();
+    const searchInp = document.getElementById("picker-search");
+    if(searchInp) searchInp.focus();
+    showToast(name + " added to selection");
+    return;
+  }
+
   render();
   showToast(name + " added");
 }
@@ -1816,9 +1937,37 @@ function stopTimerLoop(){
 function updateTimerDisplay(){
   const el = document.getElementById("workout-timer");
   if(!el || !state.active) return;
-  const secs = Math.max(0, Math.floor((Date.now() - new Date(state.active.startedAt).getTime())/1000));
-  const m = Math.floor(secs/60), s = secs%60;
-  el.textContent = m + ":" + String(s).padStart(2,"0");
+  const secs = (Date.now() - new Date(state.active.startedAt).getTime())/1000;
+  el.textContent = fmtClock(secs);
+}
+
+let restTimerInterval=null;
+function startRestTimerLoop(){
+  stopRestTimerLoop();
+  updateRestTimerDisplay();
+  restTimerInterval = setInterval(updateRestTimerDisplay, 1000);
+}
+function stopRestTimerLoop(){
+  if(restTimerInterval){ clearInterval(restTimerInterval); restTimerInterval=null; }
+}
+function updateRestTimerDisplay(){
+  const label = document.getElementById("rest-timer-label");
+  if(!label || state.restTimerStart==null) return;
+  label.textContent = fmtClock((Date.now()-state.restTimerStart)/1000);
+}
+function toggleRestTimer(){
+  const btn = document.getElementById("rest-timer-btn");
+  if(state.restTimerStart == null){
+    state.restTimerStart = Date.now();
+    if(btn) btn.classList.add("running");
+    startRestTimerLoop();
+  } else {
+    state.restTimerStart = null;
+    if(btn) btn.classList.remove("running");
+    stopRestTimerLoop();
+    const label = document.getElementById("rest-timer-label");
+    if(label) label.textContent = "";
+  }
 }
 
 /* ==================== EVENT BINDING ==================== */
@@ -1903,10 +2052,13 @@ function handleAction(action, el){
     case "start-workout": startWorkout(); break;
     case "resume-workout": state.route="workout"; render(); break;
     case "discard-workout": discardWorkout(); break;
+    case "minimize-workout": state.route = "start"; render(); break;
+    case "toggle-rest-timer": toggleRestTimer(); break;
     case "finish-workout": finishWorkout(); break;
     case "view-detail": state.detailId = el.dataset.id; state.route="detail"; render(); break;
     case "back-history": state.route="history"; render(); break;
     case "delete-workout": deleteWorkout(el.dataset.id); break;
+    case "delete-exercise": confirmDeleteExercise(el.dataset.id); break;
     case "nav-tab": state.route = el.dataset.tab; render(); break;
     case "view-template": state.tplDetailIdx = parseInt(el.dataset.idx,10); state.route="tpldetail"; render(); break;
     case "edit-template": openEditTemplateModal(parseInt(el.dataset.idx,10)); break;
