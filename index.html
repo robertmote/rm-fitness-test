@@ -109,6 +109,19 @@
     border-color:var(--good);
     color:var(--good);
   }
+  .ach-nav-btn{
+    background:var(--surface2);
+    border:1px solid var(--border);
+    color:var(--accent);
+    font-weight:600;
+    font-size:13px;
+    padding:8px 14px;
+    border-radius:var(--radius);
+    display:flex; align-items:center; gap:6px;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .ach-nav-btn:active{background:var(--surface3);}
 
   /* ---------- Main scroll area ---------- */
   .screen{
@@ -197,6 +210,7 @@
   .ex-history .label{color:var(--muted); flex-shrink:0;}
   .ex-history .val{color:var(--text); text-align:right;}
   .ex-history .val.best{color:var(--accent); font-weight:700;}
+  .ex-history .pr-date{color:var(--muted); font-weight:500; font-size:11px;}
   .ex-history.empty{color:var(--muted); text-align:center;}
 
   .sets-table{padding:0 14px 10px;}
@@ -337,7 +351,12 @@
     background:var(--bg);
     border-radius:20px;
     border:1px solid var(--border);
-    height:56.25vh;
+    /* Fill down to near the bottom of the actual visible screen instead of a fixed
+       vh fraction — a flat percentage leaves cramped space on shorter phones since
+       the search/chips/toggle header eats a near-fixed amount off the top either way.
+       100dvh (where supported) also avoids iOS Safari's address-bar vh quirks. */
+    height:calc(100vh - 120px);
+    height:calc(100dvh - 120px);
     display:flex; flex-direction:column;
     animation:slideup 0.18s ease-out;
   }
@@ -730,6 +749,8 @@ const state = {
   tplDetailIdx: null,
   summaryWorkout: null,
   newAchievements: [],
+  workoutPRs: [],
+  achievementsFrom: "start",   // which tab to return to from the Achievements screen
   restTimerStart: null,   // ms timestamp while the rest-timer button is running, else null
   confirm: null,   // {message, confirmLabel, danger, onConfirm}
   newExerciseOpen: false,
@@ -750,30 +771,36 @@ function findExercise(id){ return EXERCISES.find(e=>e.id===id); }
 // Returns {previous:[{weight,reps}], bestWeight:{weight,reps}, bestReps:{weight,reps}} for an exercise,
 // based on all *finished* workouts (most recent first).
 function getExerciseHistory(exerciseId){
-  const finished = state.workouts.slice().sort((a,b)=> new Date(b.finishedAt) - new Date(a.finishedAt));
+  // Oldest-first so bestWeight/bestReps.date records when that PR was FIRST set
+  // (">" only updates on a strict improvement, so a later tie never overwrites it).
+  const finished = state.workouts.slice().sort((a,b)=> new Date(a.finishedAt) - new Date(b.finishedAt));
   let previous = null;
-  let bestWeight = null; // {weight,reps}
-  let bestReps = null;   // {weight,reps}
+  let bestWeight = null; // {weight,reps,date}
+  let bestReps = null;   // {weight,reps,date}
 
-  for(const w of finished){
+  finished.forEach(w=>{
     const blocksWithEx = w.blocks.filter(b=>b.exerciseId===exerciseId);
-    if(blocksWithEx.length===0) continue;
+    if(blocksWithEx.length===0) return;
     const sets = [];
     blocksWithEx.forEach(b=> b.sets.forEach(s=>{
       const wt = parseFloat(s.weight), rp = parseFloat(s.reps);
       if(!isNaN(wt) && !isNaN(rp)){
         sets.push({weight:wt, reps:rp});
-        if(!bestWeight || wt > bestWeight.weight) bestWeight = {weight:wt, reps:rp};
-        if(!bestReps || rp > bestReps.reps) bestReps = {weight:wt, reps:rp};
+        if(!bestWeight || wt > bestWeight.weight) bestWeight = {weight:wt, reps:rp, date:w.finishedAt};
+        if(!bestReps || rp > bestReps.reps) bestReps = {weight:wt, reps:rp, date:w.finishedAt};
       }
     }));
-    if(!previous && sets.length){ previous = sets; }
-  }
+    if(sets.length){ previous = sets; }
+  });
   return {previous, bestWeight, bestReps};
 }
 
 function fmtNum(n){
   return Number.isInteger(n) ? String(n) : String(Math.round(n*100)/100);
+}
+
+function fmtShortDate(iso){
+  return new Date(iso).toLocaleDateString(undefined, {month:"short", day:"numeric"});
 }
 
 function buildHistoryBox(exerciseId){
@@ -783,8 +810,8 @@ function buildHistoryBox(exerciseId){
   return `
     <div class="ex-history">
       <div class="row"><span class="label">Previous</span><span class="val">${prevStr}</span></div>
-      <div class="row"><span class="label">Best weight</span><span class="val best">${fmtNum(hist.bestWeight.weight)} &times; ${fmtNum(hist.bestWeight.reps)}</span></div>
-      <div class="row"><span class="label">Best reps</span><span class="val best">${fmtNum(hist.bestReps.reps)} reps @ ${fmtNum(hist.bestReps.weight)}</span></div>
+      <div class="row"><span class="label">Best weight</span><span class="val best">${fmtNum(hist.bestWeight.weight)} &times; ${fmtNum(hist.bestWeight.reps)} <span class="pr-date">(${fmtShortDate(hist.bestWeight.date)})</span></span></div>
+      <div class="row"><span class="label">Best reps</span><span class="val best">${fmtNum(hist.bestReps.reps)} reps @ ${fmtNum(hist.bestReps.weight)} <span class="pr-date">(${fmtShortDate(hist.bestReps.date)})</span></span></div>
     </div>`;
 }
 
@@ -889,6 +916,50 @@ function hasAllCategoriesEver(workouts){
   const used = new Set();
   workouts.forEach(w=>w.blocks.forEach(b=>{ const ex=findExercise(b.exerciseId); if(ex) used.add(ex.category); }));
   return allCats.every(c=>used.has(c));
+}
+
+// For a just-finished workout, find any exercise that hit a new best weight and/or
+// new best reps compared to everything logged before it (priorWorkouts should NOT
+// include this workout). Reports at most one weight PR and one reps PR per exercise
+// — whichever set in this workout reached the new high, not every set that beat the
+// old mark.
+function computeWorkoutPRs(workout, priorWorkouts){
+  const priorBest = {}; // exerciseId -> {weight, reps}
+  priorWorkouts.forEach(w=>{
+    w.blocks.forEach(b=>{
+      b.sets.forEach(s=>{
+        const wt = parseFloat(s.weight), rp = parseFloat(s.reps);
+        if(isNaN(wt) || isNaN(rp)) return;
+        const cur = priorBest[b.exerciseId] || {weight:-Infinity, reps:-Infinity};
+        priorBest[b.exerciseId] = {weight:Math.max(cur.weight,wt), reps:Math.max(cur.reps,rp)};
+      });
+    });
+  });
+
+  const thisBest = {}; // exerciseId -> {weight, weightSetReps, reps, repsSetWeight}
+  workout.blocks.forEach(b=>{
+    b.sets.forEach(s=>{
+      const wt = parseFloat(s.weight), rp = parseFloat(s.reps);
+      if(isNaN(wt) || isNaN(rp)) return;
+      const cur = thisBest[b.exerciseId] || {weight:-Infinity, weightSetReps:null, reps:-Infinity, repsSetWeight:null};
+      if(wt > cur.weight){ cur.weight = wt; cur.weightSetReps = rp; }
+      if(rp > cur.reps){ cur.reps = rp; cur.repsSetWeight = wt; }
+      thisBest[b.exerciseId] = cur;
+    });
+  });
+
+  const prs = [];
+  Object.keys(thisBest).forEach(exId=>{
+    const prior = priorBest[exId] || {weight:-Infinity, reps:-Infinity};
+    const cur = thisBest[exId];
+    if(cur.weight > prior.weight){
+      prs.push({exerciseId:exId, type:"weight", weight:cur.weight, reps:cur.weightSetReps});
+    }
+    if(cur.reps > prior.reps){
+      prs.push({exerciseId:exId, type:"reps", weight:cur.repsSetWeight, reps:cur.reps});
+    }
+  });
+  return prs;
 }
 
 function computeAchievementStats(workouts){
@@ -1043,9 +1114,8 @@ function render(){
 function renderBottomNav(active){
   const tabs = [
     {key:"history", label:"History", icon:"&#9201;"},
-    {key:"start", label:"Start Workout", icon:"&#127947;"},
-    {key:"exercises", label:"Exercises", icon:"&#128203;"},
-    {key:"achievements", label:"Achievements", icon:"&#127942;"}
+    {key:"start", label:"Home", icon:"&#127947;"},
+    {key:"exercises", label:"Exercises", icon:"&#128203;"}
   ];
   return `
     <div class="bottom-nav">
@@ -1086,6 +1156,9 @@ function renderStart(){
   return `
     <div class="appbar">
       <h1>RM <span class="dot">Fitness</span></h1>
+      <div class="ach-nav-btn" data-action="open-achievements">
+        ${TROPHY_SVG}<span>Achievements</span>
+      </div>
     </div>
     <div class="screen">
       ${resumeBanner}
@@ -1097,7 +1170,7 @@ function renderStart(){
     </div>
     <div class="bottom-fixed">
       <div class="start-cta">
-        <button class="btn btn-primary" data-action="start-workout">+ Start Workout</button>
+        <button class="btn btn-primary" data-action="start-workout">Start Workout</button>
       </div>
       ${renderBottomNav("start")}
     </div>
@@ -1126,6 +1199,9 @@ function renderHistoryTab(){
   return `
     <div class="appbar">
       <h1>History</h1>
+      <div class="ach-nav-btn" data-action="open-achievements">
+        ${TROPHY_SVG}<span>Achievements</span>
+      </div>
     </div>
     <div class="screen">
       ${list}
@@ -1164,6 +1240,9 @@ function renderExercisesTab(){
   return `
     <div class="appbar">
       <h1>Exercises</h1>
+      <div class="ach-nav-btn" data-action="open-achievements">
+        ${TROPHY_SVG}<span>Achievements</span>
+      </div>
     </div>
     <div class="screen">
       <div class="search-row">
@@ -1218,6 +1297,7 @@ function renderAchievementsTab(){
 
   return `
     <div class="appbar">
+      <div class="icon-btn" data-action="back-from-achievements">&larr;</div>
       <h1>Achievements</h1>
     </div>
     <div class="screen">
@@ -1313,7 +1393,7 @@ function renderTemplateDetail(){
     </div>
     <div class="bottom-fixed">
       <div class="start-cta">
-        <button class="btn btn-primary" data-action="start-template" data-idx="${idx}">+ Start Workout</button>
+        <button class="btn btn-primary" data-action="start-template" data-idx="${idx}">Start Workout</button>
       </div>
     </div>
   `;
@@ -1326,12 +1406,23 @@ function fmtClock(totalSecs){
   return m + ":" + String(s).padStart(2,"0");
 }
 
+// Plain inline SVG instead of the ⏲ emoji — iOS renders that character as a full-color
+// kitchen-timer emoji regardless of surrounding theme, while this stays a simple
+// currentColor outline that matches the button's gray/green state on every platform.
+const STOPWATCH_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><line x1="10" y1="2" x2="14" y2="2"></line><line x1="12" y1="14" x2="15" y2="11"></line><circle cx="12" cy="14" r="8"></circle></svg>';
+
+// Plain inline SVG instead of the 🏆 emoji — same reason as the stopwatch above:
+// iOS renders it as a full-color glyph with its own baseline/metrics, which can
+// throw off vertical alignment next to plain text even though the CSS box
+// centers correctly everywhere else.
+const TROPHY_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M8 21h8"></path><path d="M12 17v4"></path><path d="M7 4h10v5a5 5 0 0 1-10 0V4Z"></path><path d="M7 5H5a2 2 0 0 0 0 4h2"></path><path d="M17 5h2a2 2 0 0 1 0 4h-2"></path></svg>';
+
 function renderRestTimerBtn(){
   const running = state.restTimerStart != null;
   const label = running ? fmtClock((Date.now()-state.restTimerStart)/1000) : "";
   return `
     <div class="rest-timer-btn ${running?'running':''}" id="rest-timer-btn" data-action="toggle-rest-timer" title="Rest timer">
-      <span>&#9202;</span><span id="rest-timer-label">${label}</span>
+      ${STOPWATCH_SVG}<span id="rest-timer-label">${label}</span>
     </div>`;
 }
 
@@ -1481,8 +1572,28 @@ function renderWorkoutSummary(){
           ${durMin ? "Time: " + durMin + " min" : ""}${durMin ? " &middot; " : ""}${w.blocks.length} exercise${w.blocks.length===1?"":"s"} &middot; ${setCount} set${setCount===1?"":"s"}
         </div>
       </div>
+      ${state.workoutPRs.length ? `
+        <div class="section-title" style="margin-top:0;">New PRs</div>
+        ${state.workoutPRs.map(pr=>{
+          const ex = findExercise(pr.exerciseId);
+          const label = pr.type==="weight" ? "New Weight PR" : "New Rep PR";
+          const valueStr = pr.type==="weight"
+            ? `${fmtNum(pr.weight)} &times; ${fmtNum(pr.reps)}`
+            : `${fmtNum(pr.reps)} reps @ ${fmtNum(pr.weight)}`;
+          const icon = pr.type==="weight" ? "&#128200;" : "&#128257;";
+          return `
+            <div class="ach-card">
+              <div class="ach-icon">${icon}</div>
+              <div class="ach-body">
+                <div class="ach-name">${ex ? ex.name : "Exercise"}</div>
+                <div class="ach-desc">${label}: ${valueStr}</div>
+              </div>
+              <div class="ach-status"><div class="ach-unlocked-badge">PR</div></div>
+            </div>`;
+        }).join("")}
+      ` : ""}
       ${state.newAchievements.length ? `
-        <div class="section-title" style="margin-top:0;">New Achievements</div>
+        <div class="section-title" ${state.workoutPRs.length?"":'style="margin-top:0;"'}>New Achievements</div>
         ${state.newAchievements.map(a=>`
           <div class="ach-card">
             <div class="ach-icon">${a.icon}</div>
@@ -1493,7 +1604,7 @@ function renderWorkoutSummary(){
             <div class="ach-status"><div class="ach-unlocked-badge">Unlocked</div></div>
           </div>`).join("")}
       ` : ""}
-      <div class="section-title" style="margin-top:0;">Summary</div>
+      <div class="section-title" ${(state.workoutPRs.length||state.newAchievements.length)?"":'style="margin-top:0;"'}>Summary</div>
       ${buildWorkoutContent(w)}
     </div>
     <div class="footer-bar">
@@ -1704,6 +1815,7 @@ function finishWorkout(){
 }
 function doFinishWorkout(){
   const statsBefore = computeAchievementStats(state.workouts);
+  state.workoutPRs = computeWorkoutPRs(state.active, state.workouts);
   state.active.finishedAt = new Date().toISOString();
   state.workouts.push(state.active);
   saveWorkouts(state.workouts);
@@ -2063,6 +2175,8 @@ function handleAction(action, el){
     case "view-template": state.tplDetailIdx = parseInt(el.dataset.idx,10); state.route="tpldetail"; render(); break;
     case "edit-template": openEditTemplateModal(parseInt(el.dataset.idx,10)); break;
     case "back-to-start": state.route="start"; render(); break;
+    case "open-achievements": state.achievementsFrom = state.route; state.route = "achievements"; render(); break;
+    case "back-from-achievements": state.route = state.achievementsFrom || "start"; render(); break;
     case "start-template": startWorkoutFromTemplate(parseInt(el.dataset.idx,10)); break;
     case "view-exercise": state.exDetailId = el.dataset.id; state.route="exdetail"; render(); break;
     case "back-exercises": state.route="exercises"; render(); break;
@@ -2095,7 +2209,7 @@ function handleAction(action, el){
     case "toggle-done": toggleDone(el.dataset.block, el.dataset.set); break;
     case "confirm-yes": { const cb = state.confirm.onConfirm; state.confirm = null; cb(); break; }
     case "confirm-no": state.confirm = null; render(); break;
-    case "close-summary": state.summaryWorkout = null; state.newAchievements = []; state.route = "start"; render(); break;
+    case "close-summary": state.summaryWorkout = null; state.newAchievements = []; state.workoutPRs = []; state.route = "start"; render(); break;
   }
 }
 /* ==================== KEYBOARD DISMISS ==================== */
