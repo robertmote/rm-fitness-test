@@ -150,7 +150,6 @@
   .btn-sm{padding:8px 12px; font-size:13px; width:auto;}
 
   /* ---------- Home ---------- */
-  .hero-cta{margin:6px 0 26px;}
   .section-title{
     font-size:13px; text-transform:uppercase; letter-spacing:0.08em;
     color:var(--muted); margin:22px 0 10px; font-weight:700;
@@ -774,6 +773,19 @@ const state = {
 
 function findExercise(id){ return EXERCISES.find(e=>e.id===id); }
 
+// Shared by the picker, the template editor and the Exercises tab.
+function filterExercises(category, search){
+  const q = search.trim().toLowerCase();
+  return EXERCISES.filter(ex=>{
+    if(category!=="All" && ex.category!==category) return false;
+    return !q || ex.name.toLowerCase().includes(q) || ex.category.toLowerCase().includes(q) || ex.equipment.toLowerCase().includes(q);
+  }).sort((a,b)=>a.name.localeCompare(b.name));
+}
+
+function categoryChips(active, action){
+  return CATEGORIES.map(c=>`<div class="chip ${active===c?'active':''}" data-action="${action}" data-cat="${c}">${c}</div>`).join("");
+}
+
 /* ==================== HISTORY LOOKUP ==================== */
 // Returns {previous:[{weight,reps}], bestWeight:{weight,reps}, bestReps:{weight,reps}} for an exercise,
 // based on all *finished* workouts (most recent first).
@@ -809,6 +821,10 @@ function fmtNum(n){
 function fmtShortDate(iso){
   return new Date(iso).toLocaleDateString(undefined, {month:"short", day:"numeric"});
 }
+
+const isLoggedSet = s => s.weight!=="" && s.reps!=="";
+const countLoggedSets = w => w.blocks.reduce((n,b)=>n+b.sets.filter(isLoggedSet).length, 0);
+const workoutMinutes = w => w.startedAt ? Math.max(1, Math.round((new Date(w.finishedAt)-new Date(w.startedAt))/60000)) : null;
 
 function buildHistoryBox(exerciseId){
   const hist = getExerciseHistory(exerciseId);
@@ -980,7 +996,7 @@ function computeAchievementStats(workouts){
         const wt = parseFloat(s.weight), rp = parseFloat(s.reps);
         if(!isNaN(wt)) maxWeight = Math.max(maxWeight, wt);
         if(!isNaN(rp)){ maxSetReps = Math.max(maxSetReps, rp); workoutReps += rp; }
-        if(s.weight!==""&&s.reps!=="") workoutSets++;
+        if(isLoggedSet(s)) workoutSets++;
       });
     });
     bestTotalReps = Math.max(bestTotalReps, workoutReps);
@@ -1191,8 +1207,8 @@ function renderHistoryTab(){
   const list = finished.length ? finished.map(w=>{
     const d = new Date(w.finishedAt);
     const dateStr = d.toLocaleDateString(undefined,{weekday:"short", month:"short", day:"numeric"});
-    const setCount = w.blocks.reduce((n,b)=>n+b.sets.filter(s=>s.weight!==""&&s.reps!=="").length,0);
-    const durMin = w.startedAt ? Math.max(1, Math.round((new Date(w.finishedAt)-new Date(w.startedAt))/60000)) : null;
+    const setCount = countLoggedSets(w);
+    const durMin = workoutMinutes(w);
     return `
       <div class="workout-card" data-action="view-detail" data-id="${w.id}">
         <div>
@@ -1221,14 +1237,7 @@ function renderHistoryTab(){
 
 /* ==================== EXERCISES TAB ==================== */
 function buildExBrowseRows(){
-  const b = state.exBrowse;
-  const q = b.search.trim().toLowerCase();
-  let list = EXERCISES.filter(ex=>{
-    const matchesCat = b.category==="All" || ex.category===b.category;
-    if(!matchesCat) return false;
-    if(!q) return true;
-    return ex.name.toLowerCase().includes(q) || ex.category.toLowerCase().includes(q) || ex.equipment.toLowerCase().includes(q);
-  }).sort((a,b2)=>a.name.localeCompare(b2.name));
+  const list = filterExercises(state.exBrowse.category, state.exBrowse.search);
 
   return list.length ? list.map(ex=>`
     <div class="ex-row" data-action="view-exercise" data-id="${ex.id}">
@@ -1242,7 +1251,7 @@ function buildExBrowseRows(){
 
 function renderExercisesTab(){
   const b = state.exBrowse;
-  const chips = CATEGORIES.map(c=>`<div class="chip ${b.category===c?'active':''}" data-action="exbrowse-category" data-cat="${c}">${c}</div>`).join("");
+  const chips = categoryChips(b.category, "exbrowse-category");
 
   return `
     <div class="appbar">
@@ -1544,7 +1553,7 @@ function renderDetail(){
   if(!w){ state.route="history"; return renderHistoryTab(); }
   const d = new Date(w.finishedAt);
   const dateStr = d.toLocaleDateString(undefined,{weekday:"long", month:"long", day:"numeric", year:"numeric"});
-  const durMin = w.startedAt ? Math.max(1, Math.round((new Date(w.finishedAt)-new Date(w.startedAt))/60000)) : null;
+  const durMin = workoutMinutes(w);
 
   return `
     <div class="appbar">
@@ -1565,8 +1574,8 @@ function renderDetail(){
 function renderWorkoutSummary(){
   const w = state.summaryWorkout;
   if(!w){ state.route="start"; return renderStart(); }
-  const durMin = w.startedAt ? Math.max(1, Math.round((new Date(w.finishedAt)-new Date(w.startedAt))/60000)) : null;
-  const setCount = w.blocks.reduce((n,b)=>n+b.sets.filter(s=>s.weight!==""&&s.reps!=="").length,0);
+  const durMin = workoutMinutes(w);
+  const setCount = countLoggedSets(w);
 
   return `
     <div class="appbar"></div>
@@ -1623,14 +1632,7 @@ function renderWorkoutSummary(){
 /* ==================== EXERCISE PICKER ==================== */
 function buildPickerRows(){
   const p = state.picker;
-  const q = p.search.trim().toLowerCase();
-  let list = EXERCISES.filter(ex=>{
-    const matchesCat = p.category==="All" || ex.category===p.category;
-    if(!matchesCat) return false;
-    if(!q) return true;
-    return ex.name.toLowerCase().includes(q) || ex.category.toLowerCase().includes(q) || ex.equipment.toLowerCase().includes(q);
-  }).sort((a,b)=>a.name.localeCompare(b.name));
-
+  const list = filterExercises(p.category, p.search);
   const addedIds = new Set((state.active? state.active.blocks: []).map(b=>b.exerciseId));
 
   return list.length ? list.map(ex=>{
@@ -1664,7 +1666,7 @@ function buildPickerFooter(){
 
 function renderPicker(){
   const p = state.picker;
-  const chips = CATEGORIES.map(c=>`<div class="chip ${p.category===c?'active':''}" data-action="pick-category" data-cat="${c}">${c}</div>`).join("");
+  const chips = categoryChips(p.category, "pick-category");
 
   return `
     <div class="sheet-backdrop">
@@ -1723,13 +1725,7 @@ function showConfirm(message, onConfirm, opts={}){
 
 function buildTemplateRows(){
   const t = state.newTemplate;
-  const q = t.search.trim().toLowerCase();
-  let list = EXERCISES.filter(ex=>{
-    const matchesCat = t.category==="All" || ex.category===t.category;
-    if(!matchesCat) return false;
-    if(!q) return true;
-    return ex.name.toLowerCase().includes(q) || ex.category.toLowerCase().includes(q) || ex.equipment.toLowerCase().includes(q);
-  }).sort((a,b)=>a.name.localeCompare(b.name));
+  const list = filterExercises(t.category, t.search);
 
   return list.length ? list.map(ex=>{
     const selected = t.selected.includes(ex.id);
@@ -1752,7 +1748,7 @@ function buildTemplateFooter(){
 
 function renderNewTemplateModal(){
   const t = state.newTemplate;
-  const chips = CATEGORIES.map(c=>`<div class="chip ${t.category===c?'active':''}" data-action="newtpl-category" data-cat="${c}">${c}</div>`).join("");
+  const chips = categoryChips(t.category, "newtpl-category");
 
   return `
     <div class="sheet-backdrop">
@@ -1824,8 +1820,7 @@ function finishWorkout(){
     ? "No exercises have been added to this workout. Finish anyway?"
     : "Finish and save this workout?";
   // A set counts as logged once it has both weight and reps (same rule used everywhere else).
-  const isLogged = s => s.weight!=="" && s.reps!=="";
-  const unchecked = state.active.blocks.reduce((n,b)=>n+b.sets.filter(s=>isLogged(s) && !s.done).length, 0);
+  const unchecked = state.active.blocks.reduce((n,b)=>n+b.sets.filter(s=>isLoggedSet(s) && !s.done).length, 0);
   const checkbox = unchecked > 0
     ? {label:"Auto-complete " + unchecked + " unchecked set" + (unchecked===1?"":"s"), checked: localStorage.getItem(LS_AUTOCOMPLETE)==="1"}
     : null;
@@ -1835,7 +1830,7 @@ const LS_AUTOCOMPLETE = "ironlog_autocomplete_sets_v1";
 function doFinishWorkout(autoComplete){
   if(autoComplete !== undefined) localStorage.setItem(LS_AUTOCOMPLETE, autoComplete ? "1" : "0");
   if(autoComplete){
-    state.active.blocks.forEach(b=>b.sets.forEach(s=>{ if(s.weight!=="" && s.reps!=="") s.done = true; }));
+    state.active.blocks.forEach(b=>b.sets.forEach(s=>{ if(isLoggedSet(s)) s.done = true; }));
   }
   const statsBefore = computeAchievementStats(state.workouts);
   state.workoutPRs = computeWorkoutPRs(state.active, state.workouts);
@@ -1942,7 +1937,7 @@ function toggleTemplateExerciseSelection(exId){
   if(idx>=0) t.selected.splice(idx,1);
   else t.selected.push(exId);
   patchList("newtpl-ex-list", buildTemplateRows);
-  patchHtml("newtpl-footer", buildTemplateFooter);
+  patchList("newtpl-footer", buildTemplateFooter);
 }
 
 function submitNewTemplate(){
@@ -1984,7 +1979,7 @@ function toggleExerciseSelection(exId){
     }
   }
   patchList("picker-ex-list", buildPickerRows);
-  patchHtml("picker-footer", buildPickerFooter);
+  patchList("picker-footer", buildPickerFooter);
 }
 
 function confirmAddExercises(){
@@ -2005,7 +2000,7 @@ function togglePendingSelection(exId){
   if(idx>=0) p.pendingSelection.splice(idx,1);
   else p.pendingSelection.push(exId);
   patchList("picker-ex-list", buildPickerRows);
-  patchHtml("picker-footer", buildPickerFooter);
+  patchList("picker-footer", buildPickerFooter);
 }
 
 function confirmSuperset(){
@@ -2109,14 +2104,7 @@ function toggleRestTimer(){
 function bindEvents(){
   const app = document.getElementById("app");
 
-  app.querySelectorAll("[data-action]").forEach(el=>{
-    const action = el.getAttribute("data-action");
-    if(action==="set-weight" || action==="set-reps" || action==="search-input" || action==="exbrowse-search-input" || action==="newtpl-search-input") return; // handled via input listener
-    el.addEventListener("click", (ev)=>{
-      ev.stopPropagation();
-      handleAction(action, el);
-    });
-  });
+  bindActionsWithin(app);
 
   app.querySelectorAll('input[data-action="set-weight"]').forEach(inp=>{
     inp.addEventListener("input", ()=> updateSetField(inp.dataset.block, inp.dataset.set, "weight", inp.value));
@@ -2159,23 +2147,21 @@ function bindEvents(){
   }
 }
 
+// Text inputs carry a data-action only as a marker; they're wired via "input" listeners, not clicks.
+const INPUT_ACTIONS = new Set(["set-weight","set-reps","search-input","exbrowse-search-input","newtpl-search-input"]);
 function bindActionsWithin(container){
   container.querySelectorAll("[data-action]").forEach(el=>{
+    const action = el.getAttribute("data-action");
+    if(INPUT_ACTIONS.has(action)) return;
     el.addEventListener("click", (ev)=>{
       ev.stopPropagation();
-      handleAction(el.getAttribute("data-action"), el);
+      handleAction(action, el);
     });
   });
 }
 
-function patchList(containerId, buildRowsFn){
-  const el = document.getElementById(containerId);
-  if(!el) return;
-  el.innerHTML = buildRowsFn();
-  bindActionsWithin(el);
-}
-
-function patchHtml(containerId, buildHtmlFn){
+// Replaces one container's HTML in place (rows or footer) so surrounding inputs keep focus.
+function patchList(containerId, buildHtmlFn){
   const el = document.getElementById(containerId);
   if(!el) return;
   el.innerHTML = buildHtmlFn();
