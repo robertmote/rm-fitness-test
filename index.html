@@ -457,6 +457,13 @@
     animation:slideup 0.15s ease-out;
   }
   .confirm-msg{font-size:15px; line-height:1.5; margin-bottom:18px;}
+  .confirm-check{
+    display:flex; align-items:center; gap:10px;
+    margin:-6px 0 16px; padding:10px 12px;
+    background:var(--surface2); border:1px solid var(--border); border-radius:12px;
+    font-size:13.5px; font-weight:600; cursor:pointer;
+  }
+  .confirm-check .ex-row-check:not(.selected){background:var(--bg);}
   .confirm-actions{display:flex; gap:10px;}
   .confirm-actions .btn{flex:1;}
 
@@ -1696,6 +1703,11 @@ function renderConfirmModal(){
     <div class="confirm-backdrop" data-action="confirm-no">
       <div class="confirm-box" onclick="event.stopPropagation()">
         <div class="confirm-msg">${escHtml(c.message)}</div>
+        ${c.checkbox ? `
+          <div class="confirm-check" data-action="confirm-toggle-check">
+            <div class="ex-row-check ${c.checkbox.checked?'selected':''}">&#10003;</div>
+            <span>${escHtml(c.checkbox.label)}</span>
+          </div>` : ""}
         <div class="confirm-actions">
           <button class="btn btn-secondary" data-action="confirm-no">Cancel</button>
           <button class="btn ${c.danger ? 'btn-danger' : 'btn-primary'}" data-action="confirm-yes">${escHtml(c.confirmLabel)}</button>
@@ -1705,7 +1717,7 @@ function renderConfirmModal(){
   `;
 }
 function showConfirm(message, onConfirm, opts={}){
-  state.confirm = {message, onConfirm, confirmLabel: opts.confirmLabel || "Confirm", danger: !!opts.danger};
+  state.confirm = {message, onConfirm, confirmLabel: opts.confirmLabel || "Confirm", danger: !!opts.danger, checkbox: opts.checkbox || null};
   render();
 }
 
@@ -1811,9 +1823,20 @@ function finishWorkout(){
   const msg = empty
     ? "No exercises have been added to this workout. Finish anyway?"
     : "Finish and save this workout?";
-  showConfirm(msg, doFinishWorkout, {confirmLabel:"Finish"});
+  // A set counts as logged once it has both weight and reps (same rule used everywhere else).
+  const isLogged = s => s.weight!=="" && s.reps!=="";
+  const unchecked = state.active.blocks.reduce((n,b)=>n+b.sets.filter(s=>isLogged(s) && !s.done).length, 0);
+  const checkbox = unchecked > 0
+    ? {label:"Auto-complete " + unchecked + " unchecked set" + (unchecked===1?"":"s"), checked: localStorage.getItem(LS_AUTOCOMPLETE)==="1"}
+    : null;
+  showConfirm(msg, doFinishWorkout, {confirmLabel:"Finish", checkbox});
 }
-function doFinishWorkout(){
+const LS_AUTOCOMPLETE = "ironlog_autocomplete_sets_v1";
+function doFinishWorkout(autoComplete){
+  if(autoComplete !== undefined) localStorage.setItem(LS_AUTOCOMPLETE, autoComplete ? "1" : "0");
+  if(autoComplete){
+    state.active.blocks.forEach(b=>b.sets.forEach(s=>{ if(s.weight!=="" && s.reps!=="") s.done = true; }));
+  }
   const statsBefore = computeAchievementStats(state.workouts);
   state.workoutPRs = computeWorkoutPRs(state.active, state.workouts);
   state.active.finishedAt = new Date().toISOString();
@@ -2207,7 +2230,13 @@ function handleAction(action, el){
     case "add-set": addSet(el.dataset.block); break;
     case "delete-set": deleteSet(el.dataset.block, el.dataset.set); break;
     case "toggle-done": toggleDone(el.dataset.block, el.dataset.set); break;
-    case "confirm-yes": { const cb = state.confirm.onConfirm; state.confirm = null; cb(); break; }
+    case "confirm-yes": { const cb = state.confirm.onConfirm; const checked = state.confirm.checkbox ? state.confirm.checkbox.checked : undefined; state.confirm = null; cb(checked); break; }
+    case "confirm-toggle-check": {
+      const cb = state.confirm.checkbox;
+      cb.checked = !cb.checked;
+      el.querySelector(".ex-row-check").classList.toggle("selected", cb.checked);
+      break;
+    }
     case "confirm-no": state.confirm = null; render(); break;
     case "close-summary": state.summaryWorkout = null; state.newAchievements = []; state.workoutPRs = []; state.route = "start"; render(); break;
   }
