@@ -1,2 +1,2 @@
-# rm-fitness-test
+# rm-fitness
 My fitness app
