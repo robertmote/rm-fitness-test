@@ -159,6 +159,8 @@
     border:1px dashed var(--border); border-radius:var(--radius);
     font-size:14px; line-height:1.5;
   }
+  .backup-hint{font-size:12px; color:var(--muted); margin:-4px 0 10px;}
+  .backup-btns{display:flex; gap:10px;}
   .workout-card{
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--radius); padding:14px 16px; margin-bottom:10px;
@@ -1228,6 +1230,12 @@ function renderHistoryTab(){
     </div>
     <div class="screen">
       ${list}
+      <div class="section-title">Backup</div>
+      <div class="backup-hint">Save your data to a file, or restore it on this or another device.</div>
+      <div class="backup-btns">
+        <button class="btn btn-secondary btn-sm" data-action="export-data">Export</button>
+        <button class="btn btn-secondary btn-sm" data-action="import-data">Import</button>
+      </div>
     </div>
     <div class="bottom-fixed">
       ${renderBottomNav("history")}
@@ -2054,6 +2062,85 @@ function toggleDone(blockId, setId){
   render();
 }
 
+/* ==================== BACKUP / RESTORE ==================== */
+// One JSON file holding every "ironlog_" localStorage key, so a backup covers workouts,
+// custom exercises/templates, deleted built-ins and settings without listing them here.
+const BACKUP_APP = "rm-fitness";
+const BACKUP_PREFIX = "ironlog_";
+const backupKeys = () => Object.keys(localStorage).filter(k=>k.startsWith(BACKUP_PREFIX));
+
+function buildBackupJson(){
+  const data = {};
+  backupKeys().forEach(k=>{ data[k] = localStorage.getItem(k); });
+  return JSON.stringify({app:BACKUP_APP, version:1, exportedAt:new Date().toISOString(), data}, null, 2);
+}
+
+// Returns [[key, value], ...] or throws if the text isn't a backup this app wrote.
+function parseBackup(text){
+  const obj = JSON.parse(text);
+  if(!obj || obj.app!==BACKUP_APP || !obj.data || typeof obj.data!=="object") throw new Error("not a backup");
+  const entries = Object.entries(obj.data);
+  if(!entries.length) throw new Error("empty backup");
+  entries.forEach(([k,v])=>{
+    if(!k.startsWith(BACKUP_PREFIX) || typeof v!=="string") throw new Error("bad entry");
+    JSON.parse(v);
+  });
+  return entries;
+}
+
+// Replaces all app data with the backup; puts the old data back if a write fails (e.g. quota).
+function applyBackup(entries){
+  const old = backupKeys().map(k=>[k, localStorage.getItem(k)]);
+  const write = list=>{ backupKeys().forEach(k=>localStorage.removeItem(k)); list.forEach(([k,v])=>localStorage.setItem(k,v)); };
+  try{ write(entries); return true; }
+  catch(e){ try{ write(old); }catch(e2){} return false; }
+}
+
+function downloadFile(file){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(file);
+  a.download = file.name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+  showToast("Backup saved");
+}
+
+function exportData(){
+  const name = "rm-fitness-backup-" + new Date().toLocaleDateString("en-CA") + ".json";
+  const file = new File([buildBackupJson()], name, {type:"application/json"});
+  // The share sheet is the reliable way to reach Files/iCloud from an iPhone home-screen app.
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    navigator.share({files:[file], title:"RM Fitness backup"}).catch(e=>{ if(e.name!=="AbortError") downloadFile(file); });
+  } else {
+    downloadFile(file);
+  }
+}
+
+function importData(){
+  const inp = document.createElement("input");
+  inp.type = "file";
+  inp.accept = ".json,application/json";
+  inp.addEventListener("change", ()=>{
+    const f = inp.files[0];
+    if(!f) return;
+    f.text().then(text=>{
+      const entries = parseBackup(text);
+      const wk = entries.find(([k])=>k===LS_WORKOUTS);
+      const n = wk ? JSON.parse(wk[1]).length : 0;
+      showConfirm(
+        "Replace everything on this device with this backup (" + n + " workout" + (n===1?"":"s") + ")? Your current data will be overwritten.",
+        ()=>{
+          if(applyBackup(entries)) location.reload();
+          else { showToast("Import failed — your data was left unchanged"); render(); }
+        },
+        {confirmLabel:"Replace", danger:true}
+      );
+    }).catch(()=> showToast("That isn't a valid RM Fitness backup"));
+  });
+  inp.click();
+}
 /* ==================== TIMER ==================== */
 let timerInterval=null;
 function startTimerLoop(){
@@ -2179,6 +2266,8 @@ function handleAction(action, el){
     case "view-detail": state.detailId = el.dataset.id; state.route="detail"; render(); break;
     case "back-history": state.route="history"; render(); break;
     case "delete-workout": deleteWorkout(el.dataset.id); break;
+    case "export-data": exportData(); break;
+    case "import-data": importData(); break;
     case "delete-exercise": confirmDeleteExercise(el.dataset.id); break;
     case "nav-tab": state.route = el.dataset.tab; render(); break;
     case "view-template": state.tplDetailIdx = parseInt(el.dataset.idx,10); state.route="tpldetail"; render(); break;
