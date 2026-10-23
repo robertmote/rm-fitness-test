@@ -637,6 +637,7 @@ const EXERCISES = [
   // references those ids directly.
   {n:"Incline Smith Machine Bench Press", c:"Chest", e:"Smith Machine"},
 ].map((x,i)=>({id:"ex_"+i, name:x.n, category:x.c, equipment:x.e}));
+const BUILTIN_COUNT = EXERCISES.length;   // before deleted built-ins are filtered out below
 
 // Built-in exercises the user deleted. Ids stay stable (assigned by position above)
 // so this filter always matches the same exercise across reloads.
@@ -2075,16 +2076,45 @@ function buildBackupJson(){
   return JSON.stringify({app:BACKUP_APP, version:1, exportedAt:new Date().toISOString(), data}, null, 2);
 }
 
+// Shape checks for every key the app stores. Parseable JSON isn't enough: a wrong-shaped value
+// (e.g. workouts as {}) would crash the app on load, after the old data was already replaced.
+const isObj = v => !!v && typeof v==="object" && !Array.isArray(v);
+const isStr = v => typeof v==="string";
+const isNumOrStr = v => typeof v==="number" || isStr(v);
+const validSet = s => isObj(s) && isStr(s.id) && isNumOrStr(s.weight) && isNumOrStr(s.reps);
+const validBlock = (b, known) => isObj(b) && isStr(b.id) && isStr(b.exerciseId) && known(b.exerciseId) && Array.isArray(b.sets) && b.sets.every(validSet);
+const validWorkout = (w, known, finished) => isObj(w) && isStr(w.id) && Array.isArray(w.blocks) && w.blocks.every(b=>validBlock(b, known))
+  && (!finished || (isStr(w.finishedAt) && !isNaN(new Date(w.finishedAt))));
+
+const BACKUP_SCHEMAS = {
+  [LS_WORKOUTS]: (v, known)=> Array.isArray(v) && v.every(w=>validWorkout(w, known, true)),
+  [LS_ACTIVE]: (v, known)=> v===null || validWorkout(v, known, false),
+  [LS_CUSTOM_EX]: v=> Array.isArray(v) && v.every(e=>isObj(e) && isStr(e.id) && isStr(e.name) && isStr(e.category) && isStr(e.equipment) && e.custom===true),
+  [LS_CUSTOM_TEMPLATES]: (v, known)=> Array.isArray(v) && v.every(t=>isObj(t) && isStr(t.name) && Array.isArray(t.exerciseIds) && t.exerciseIds.every(id=>isStr(id) && known(id))),
+  [LS_DELETED_BUILTIN]: v=> Array.isArray(v) && v.every(isStr),
+  [LS_AUTOCOMPLETE]: v=> v===0 || v===1
+};
+
 // Returns [[key, value], ...] or throws if the text isn't a backup this app wrote.
 function parseBackup(text){
   const obj = JSON.parse(text);
-  if(!obj || obj.app!==BACKUP_APP || !obj.data || typeof obj.data!=="object") throw new Error("not a backup");
+  if(!obj || obj.app!==BACKUP_APP || obj.version!==1 || !isObj(obj.data)) throw new Error("not a backup");
   const entries = Object.entries(obj.data);
   if(!entries.length) throw new Error("empty backup");
+  const vals = {};
   entries.forEach(([k,v])=>{
-    if(!k.startsWith(BACKUP_PREFIX) || typeof v!=="string") throw new Error("bad entry");
-    JSON.parse(v);
+    if(!(k in BACKUP_SCHEMAS) || !isStr(v)) throw new Error("bad entry");
+    vals[k] = JSON.parse(v);
   });
+  // An exercise id must be a built-in the backup hasn't deleted, or a custom one the backup carries.
+  const deleted = new Set(Array.isArray(vals[LS_DELETED_BUILTIN]) ? vals[LS_DELETED_BUILTIN] : []);
+  const custom = new Set((Array.isArray(vals[LS_CUSTOM_EX]) ? vals[LS_CUSTOM_EX] : []).filter(isObj).map(e=>e.id));
+  const known = id=>{
+    if(custom.has(id)) return true;
+    const m = /^ex_(\d+)$/.exec(id);
+    return !!m && +m[1] < BUILTIN_COUNT && !deleted.has(id);
+  };
+  entries.forEach(([k])=>{ if(!BACKUP_SCHEMAS[k](vals[k], known)) throw new Error("bad shape: "+k); });
   return entries;
 }
 
