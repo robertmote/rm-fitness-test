@@ -55,6 +55,8 @@
   }
   button{font-family:inherit;}
   input{font-family:inherit;}
+  /* Visible focus for keyboard users (taps don't trigger :focus-visible). */
+  [role="button"]:focus-visible, [role="checkbox"]:focus-visible, button:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
   .hidden{display:none !important;}
 
   /* ---------- App bar ---------- */
@@ -498,11 +500,17 @@
 </head>
 <body>
 <div id="app"></div>
-<div id="toast" class="toast"></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 <button id="kb-dismiss" class="kb-dismiss" type="button" aria-label="Dismiss keyboard">&#9660;</button>
 
 <script>
 /* ==================== EXERCISE DATABASE ==================== */
+
+// Every save goes through here so a full or blocked store is reported instead of failing silently.
+function lsSet(key, value){
+  try{ localStorage.setItem(key, value); }
+  catch(e){ showToast("Could not save - device storage is full or blocked"); }
+}
 const EXERCISES = [
   // Chest
   {n:"Barbell Bench Press", c:"Chest", e:"Barbell"},
@@ -643,7 +651,7 @@ const BUILTIN_COUNT = EXERCISES.length;   // before deleted built-ins are filter
 // so this filter always matches the same exercise across reloads.
 const LS_DELETED_BUILTIN = "ironlog_deleted_builtin_v1";
 function loadDeletedBuiltinIds(){ try{ return JSON.parse(localStorage.getItem(LS_DELETED_BUILTIN)) || []; }catch(e){ return []; } }
-function saveDeletedBuiltinIds(ids){ localStorage.setItem(LS_DELETED_BUILTIN, JSON.stringify(ids)); }
+function saveDeletedBuiltinIds(ids){ lsSet(LS_DELETED_BUILTIN, JSON.stringify(ids)); }
 {
   const deletedBuiltinIds = new Set(loadDeletedBuiltinIds());
   for(let i=EXERCISES.length-1; i>=0; i--){ if(deletedBuiltinIds.has(EXERCISES[i].id)) EXERCISES.splice(i,1); }
@@ -675,13 +683,13 @@ function loadWorkouts(){
   try{ return JSON.parse(localStorage.getItem(LS_WORKOUTS)) || []; }catch(e){ return []; }
 }
 function saveWorkouts(list){
-  localStorage.setItem(LS_WORKOUTS, JSON.stringify(list));
+  lsSet(LS_WORKOUTS, JSON.stringify(list));
 }
 function loadActive(){
   try{ return JSON.parse(localStorage.getItem(LS_ACTIVE)) || null; }catch(e){ return null; }
 }
 function saveActive(w){
-  if(w) localStorage.setItem(LS_ACTIVE, JSON.stringify(w));
+  if(w) lsSet(LS_ACTIVE, JSON.stringify(w));
   else localStorage.removeItem(LS_ACTIVE);
 }
 
@@ -690,7 +698,7 @@ function uid(){ return Date.now().toString(36) + Math.random().toString(36).slic
 /* ==================== CUSTOM EXERCISES ==================== */
 const LS_CUSTOM_EX = "ironlog_custom_exercises_v1";
 function loadCustomExercises(){ try{ return JSON.parse(localStorage.getItem(LS_CUSTOM_EX)) || []; }catch(e){ return []; } }
-function saveCustomExercises(){ localStorage.setItem(LS_CUSTOM_EX, JSON.stringify(EXERCISES.filter(e=>e.custom))); }
+function saveCustomExercises(){ lsSet(LS_CUSTOM_EX, JSON.stringify(EXERCISES.filter(e=>e.custom))); }
 EXERCISES.push(...loadCustomExercises());
 
 function addCustomExercise(name, category, equipment){
@@ -738,7 +746,7 @@ function deleteExercise(exId){
 /* ==================== CUSTOM TEMPLATES ==================== */
 const LS_CUSTOM_TEMPLATES = "ironlog_custom_templates_v1";
 function loadCustomTemplates(){ try{ return JSON.parse(localStorage.getItem(LS_CUSTOM_TEMPLATES)) || []; }catch(e){ return []; } }
-function saveCustomTemplates(){ localStorage.setItem(LS_CUSTOM_TEMPLATES, JSON.stringify(TEMPLATES.filter(t=>t.custom))); }
+function saveCustomTemplates(){ lsSet(LS_CUSTOM_TEMPLATES, JSON.stringify(TEMPLATES.filter(t=>t.custom))); }
 TEMPLATES.push(...loadCustomTemplates());
 
 function addCustomTemplate(name, exerciseIds){
@@ -825,7 +833,14 @@ function fmtShortDate(iso){
   return new Date(iso).toLocaleDateString(undefined, {month:"short", day:"numeric"});
 }
 
-const isLoggedSet = s => s.weight!=="" && s.reps!=="";
+// One shared formatter: toLocaleDateString() builds a new Intl object per call, which dominated
+// the History tab's render time with a few hundred workouts.
+const fmtHistoryDate = (()=>{
+  const f = new Intl.DateTimeFormat(undefined, {weekday:"short", month:"short", day:"numeric"});
+  return iso => f.format(new Date(iso));
+})();
+
+const isLoggedSet =s => s.weight!=="" && s.reps!=="";
 const countLoggedSets = w => w.blocks.reduce((n,b)=>n+b.sets.filter(isLoggedSet).length, 0);
 const workoutMinutes = w => w.startedAt ? Math.max(1, Math.round((new Date(w.finishedAt)-new Date(w.startedAt))/60000)) : null;
 
@@ -1167,7 +1182,7 @@ function renderStart(){
 
   const templateCard = (t,i)=>`
     <div class="template-card" data-action="view-template" data-idx="${i}">
-      <div class="tpl-name">${t.name}</div>
+      <div class="tpl-name">${escHtml(t.name)}</div>
       <div class="tpl-sub">${t.exerciseIds.length} exercises</div>
     </div>`;
 
@@ -1208,8 +1223,7 @@ function renderHistoryTab(){
   const finished = state.workouts.slice().sort((a,b)=> new Date(b.finishedAt) - new Date(a.finishedAt));
 
   const list = finished.length ? finished.map(w=>{
-    const d = new Date(w.finishedAt);
-    const dateStr = d.toLocaleDateString(undefined,{weekday:"short", month:"short", day:"numeric"});
+    const dateStr = fmtHistoryDate(w.finishedAt);
     const setCount = countLoggedSets(w);
     const durMin = workoutMinutes(w);
     return `
@@ -1251,8 +1265,8 @@ function buildExBrowseRows(){
   return list.length ? list.map(ex=>`
     <div class="ex-row" data-action="view-exercise" data-id="${ex.id}">
       <div>
-        <div class="ex-row-name">${ex.name}</div>
-        <div class="ex-row-sub">${ex.category} &middot; ${ex.equipment}</div>
+        <div class="ex-row-name">${escHtml(ex.name)}</div>
+        <div class="ex-row-sub">${escHtml(ex.category)} &middot; ${escHtml(ex.equipment)}</div>
       </div>
       <div style="color:var(--muted2); font-size:16px;">&rsaquo;</div>
     </div>`).join("") : `<div class="ex-empty">No exercises match your search.</div>`;
@@ -1379,8 +1393,8 @@ function renderExerciseDetail(){
       <button class="btn btn-danger btn-sm" data-action="delete-exercise" data-id="${ex.id}">Delete</button>
     </div>
     <div class="screen">
-      <div style="font-size:20px; font-weight:700; margin-bottom:4px;">${ex.name}</div>
-      <div style="color:var(--muted); font-size:13px; margin-bottom:16px;">${ex.category} &middot; ${ex.equipment}</div>
+      <div style="font-size:20px; font-weight:700; margin-bottom:4px;">${escHtml(ex.name)}</div>
+      <div style="color:var(--muted); font-size:13px; margin-bottom:16px;">${escHtml(ex.category)} &middot; ${escHtml(ex.equipment)}</div>
       ${buildHistoryBox(ex.id)}
     </div>
   `;
@@ -1398,8 +1412,8 @@ function renderTemplateDetail(){
       <div class="block">
         <div class="ex-head">
           <div>
-            <div class="ex-name">${ex.name}</div>
-            <div class="ex-tag">${ex.category} &middot; ${ex.equipment}</div>
+            <div class="ex-name">${escHtml(ex.name)}</div>
+            <div class="ex-tag">${escHtml(ex.category)} &middot; ${escHtml(ex.equipment)}</div>
           </div>
         </div>
         ${buildHistoryBox(exId)}
@@ -1516,8 +1530,8 @@ function renderBlock(b){
     <div class="block" id="block-${b.id}">
       <div class="ex-head">
         <div>
-          <div class="ex-name">${ex.name}</div>
-          <div class="ex-tag">${ex.category} &middot; ${ex.equipment}</div>
+          <div class="ex-name">${escHtml(ex.name)}</div>
+          <div class="ex-tag">${escHtml(ex.category)} &middot; ${escHtml(ex.equipment)}</div>
         </div>
         <div class="ex-remove" data-action="remove-block" data-block="${b.id}">&times;</div>
       </div>
@@ -1548,7 +1562,7 @@ function buildWorkoutContent(w){
       `).join("") || `<div class="detail-set-line"><span style="color:var(--muted)">No sets logged</span></div>`;
       return `
         <div class="block">
-          <div class="ex-head"><div><div class="ex-name">${ex.name}</div><div class="ex-tag">${ex.category} &middot; ${ex.equipment}</div></div></div>
+          <div class="ex-head"><div><div class="ex-name">${escHtml(ex.name)}</div><div class="ex-tag">${escHtml(ex.category)} &middot; ${escHtml(ex.equipment)}</div></div></div>
           <div class="sets-table">${lines}</div>
         </div>`;
     }).join("");
@@ -1610,7 +1624,7 @@ function renderWorkoutSummary(){
             <div class="ach-card">
               <div class="ach-icon">${icon}</div>
               <div class="ach-body">
-                <div class="ach-name">${ex ? ex.name : "Exercise"}</div>
+                <div class="ach-name">${ex ? escHtml(ex.name) : "Exercise"}</div>
                 <div class="ach-desc">${label}: ${valueStr}</div>
               </div>
               <div class="ach-status"><div class="ach-unlocked-badge">PR</div></div>
@@ -1653,8 +1667,8 @@ function buildPickerRows(){
     return `
       <div class="ex-row ${isSelected?'selected':''}" data-action="pick-exercise" data-id="${ex.id}">
         <div>
-          <div class="ex-row-name">${ex.name}</div>
-          <div class="ex-row-sub">${ex.category} &middot; ${ex.equipment}</div>
+          <div class="ex-row-name">${escHtml(ex.name)}</div>
+          <div class="ex-row-sub">${escHtml(ex.category)} &middot; ${escHtml(ex.equipment)}</div>
         </div>
         ${rightHtml}
       </div>`;
@@ -1741,8 +1755,8 @@ function buildTemplateRows(){
     return `
       <div class="ex-row" data-action="toggle-template-exercise" data-id="${ex.id}">
         <div>
-          <div class="ex-row-name">${ex.name}</div>
-          <div class="ex-row-sub">${ex.category} &middot; ${ex.equipment}</div>
+          <div class="ex-row-name">${escHtml(ex.name)}</div>
+          <div class="ex-row-sub">${escHtml(ex.category)} &middot; ${escHtml(ex.equipment)}</div>
         </div>
         <div class="ex-row-check ${selected?'selected':''}">&#10003;</div>
       </div>`;
@@ -1837,7 +1851,7 @@ function finishWorkout(){
 }
 const LS_AUTOCOMPLETE = "ironlog_autocomplete_sets_v1";
 function doFinishWorkout(autoComplete){
-  if(autoComplete !== undefined) localStorage.setItem(LS_AUTOCOMPLETE, autoComplete ? "1" : "0");
+  if(autoComplete !== undefined) lsSet(LS_AUTOCOMPLETE, autoComplete ? "1" : "0");
   if(autoComplete){
     state.active.blocks.forEach(b=>b.sets.forEach(s=>{ if(isLoggedSet(s)) s.done = true; }));
   }
@@ -2080,16 +2094,18 @@ function buildBackupJson(){
 // (e.g. workouts as {}) would crash the app on load, after the old data was already replaced.
 const isObj = v => !!v && typeof v==="object" && !Array.isArray(v);
 const isStr = v => typeof v==="string";
+// Ids are written into HTML attributes, so only plain id characters are accepted.
+const isId = v => isStr(v) && /^[\w-]+$/.test(v);
 const isNumOrStr = v => typeof v==="number" || isStr(v);
-const validSet = s => isObj(s) && isStr(s.id) && isNumOrStr(s.weight) && isNumOrStr(s.reps);
-const validBlock = (b, known) => isObj(b) && isStr(b.id) && isStr(b.exerciseId) && known(b.exerciseId) && Array.isArray(b.sets) && b.sets.every(validSet);
-const validWorkout = (w, known, finished) => isObj(w) && isStr(w.id) && Array.isArray(w.blocks) && w.blocks.every(b=>validBlock(b, known))
+const validSet = s => isObj(s) && isId(s.id) && isNumOrStr(s.weight) && isNumOrStr(s.reps);
+const validBlock = (b, known) => isObj(b) && isId(b.id) && isStr(b.exerciseId) && known(b.exerciseId) && Array.isArray(b.sets) && b.sets.every(validSet);
+const validWorkout = (w, known, finished) => isObj(w) && isId(w.id) && Array.isArray(w.blocks) && w.blocks.every(b=>validBlock(b, known))
   && (!finished || (isStr(w.finishedAt) && !isNaN(new Date(w.finishedAt))));
 
 const BACKUP_SCHEMAS = {
   [LS_WORKOUTS]: (v, known)=> Array.isArray(v) && v.every(w=>validWorkout(w, known, true)),
   [LS_ACTIVE]: (v, known)=> v===null || validWorkout(v, known, false),
-  [LS_CUSTOM_EX]: v=> Array.isArray(v) && v.every(e=>isObj(e) && isStr(e.id) && isStr(e.name) && isStr(e.category) && isStr(e.equipment) && e.custom===true),
+  [LS_CUSTOM_EX]: v=> Array.isArray(v) && v.every(e=>isObj(e) && isId(e.id) && isStr(e.name) && isStr(e.category) && isStr(e.equipment) && e.custom===true),
   [LS_CUSTOM_TEMPLATES]: (v, known)=> Array.isArray(v) && v.every(t=>isObj(t) && isStr(t.name) && Array.isArray(t.exerciseIds) && t.exerciseIds.every(id=>isStr(id) && known(id))),
   [LS_DELETED_BUILTIN]: v=> Array.isArray(v) && v.every(isStr),
   [LS_AUTOCOMPLETE]: v=> v===0 || v===1
@@ -2221,7 +2237,7 @@ function toggleRestTimer(){
 function bindEvents(){
   const app = document.getElementById("app");
 
-  bindActionsWithin(app);
+  enhanceA11y(app);
 
   app.querySelectorAll('input[data-action="set-weight"]').forEach(inp=>{
     inp.addEventListener("input", ()=> updateSetField(inp.dataset.block, inp.dataset.set, "weight", inp.value));
@@ -2266,14 +2282,64 @@ function bindEvents(){
 
 // Text inputs carry a data-action only as a marker; they're wired via "input" listeners, not clicks.
 const INPUT_ACTIONS = new Set(["set-weight","set-reps","search-input","exbrowse-search-input","newtpl-search-input"]);
-function bindActionsWithin(container){
-  container.querySelectorAll("[data-action]").forEach(el=>{
+
+// One delegated click handler on #app instead of a listener per element (a long History tab
+// used to attach ~2000 on every render, and patched lists needed re-binding). It runs in the
+// capture phase because dialogs stop bubbling themselves.
+function initClicks(){
+  const app = document.getElementById("app");
+  app.addEventListener("click", ev=>{
+    const el = ev.target.closest("[data-action]");
+    if(!el) return;
     const action = el.getAttribute("data-action");
     if(INPUT_ACTIONS.has(action)) return;
-    el.addEventListener("click", (ev)=>{
-      ev.stopPropagation();
-      handleAction(action, el);
-    });
+    // A tap inside a dialog must not trigger the backdrop around it (tapping outside cancels).
+    const box = ev.target.closest(".sheet, .confirm-box");
+    if(box && !box.contains(el)) return;
+    handleAction(action, el);
+  }, true);
+
+  // Keyboard: Enter/Space activate our div-buttons; Esc closes the topmost dialog.
+  app.addEventListener("keydown", ev=>{
+    if((ev.key==="Enter" || ev.key===" ") && ev.target.matches("[data-action][tabindex]")){
+      ev.preventDefault();
+      ev.target.click();
+    } else if(ev.key==="Escape"){
+      const closers = app.querySelectorAll('[data-action="close-picker"], [data-action="close-new-template"], [data-action="close-new-exercise"], .confirm-actions [data-action="confirm-no"]');
+      if(closers.length) closers[closers.length-1].click();
+    }
+  });
+}
+
+// Screen-reader and keyboard semantics for the div-based controls, applied after each render
+// (and each patch) so the markup templates stay unchanged.
+const ACTION_LABELS = {
+  "delete-workout":"Delete workout", "close-picker":"Close", "close-new-template":"Close",
+  "back-from-achievements":"Back", "back-exercises":"Back", "back-to-start":"Back", "back-history":"Back",
+  "delete-set":"Delete set", "remove-block":"Remove exercise", "toggle-done":"Mark set done",
+  "toggle-rest-timer":"Rest timer", "discard-workout":"Discard workout", "minimize-workout":"Minimize workout"
+};
+function enhanceA11y(root){
+  root.querySelectorAll("[data-action]:not(button):not(input):not(.confirm-backdrop)").forEach(el=>{
+    el.setAttribute("role","button");
+    el.tabIndex = 0;
+    const label = ACTION_LABELS[el.getAttribute("data-action")];
+    if(label) el.setAttribute("aria-label", label);
+  });
+  root.querySelectorAll(".set-check").forEach(el=>{
+    el.setAttribute("role","checkbox");
+    el.setAttribute("aria-checked", el.classList.contains("done"));
+  });
+  root.querySelectorAll(".nav-item.active").forEach(el=>el.setAttribute("aria-current","page"));
+  root.querySelectorAll(".sheet").forEach(el=>{
+    el.setAttribute("role","dialog");
+    el.setAttribute("aria-modal","true");
+    const h = el.querySelector("h2");
+    if(h) el.setAttribute("aria-label", h.textContent);
+  });
+  root.querySelectorAll(".confirm-box").forEach(el=>{
+    el.setAttribute("role","alertdialog");
+    el.setAttribute("aria-modal","true");
   });
 }
 
@@ -2282,7 +2348,7 @@ function patchList(containerId, buildHtmlFn){
   const el = document.getElementById(containerId);
   if(!el) return;
   el.innerHTML = buildHtmlFn();
-  bindActionsWithin(el);
+  enhanceA11y(el);
 }
 
 function handleAction(action, el){
@@ -2376,6 +2442,7 @@ kbBtn.addEventListener("click", ()=>{
 });
 
 /* ==================== INIT ==================== */
+initClicks();
 if(state.active) state.route="workout";
 render();
 
