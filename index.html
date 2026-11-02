@@ -4,6 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
 <title>RM Fitness</title>
+<!-- The app makes no network requests, so connect/form/base are shut: even if injected script ran,
+     it could not send data anywhere. 'unsafe-inline' is needed only because the build is one file. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; worker-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'" />
 <meta name="theme-color" content="#0f1115" />
 <link rel="apple-touch-icon" href="icon-180.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1227,12 +1230,12 @@ function renderHistoryTab(){
     const setCount = countLoggedSets(w);
     const durMin = workoutMinutes(w);
     return `
-      <div class="workout-card" data-action="view-detail" data-id="${w.id}">
+      <div class="workout-card" data-action="view-detail" data-id="${escAttr(w.id)}">
         <div>
           <div class="wc-date">${dateStr}</div>
           <div class="wc-meta">${w.blocks.length} exercise${w.blocks.length===1?"":"s"} &middot; ${setCount} set${setCount===1?"":"s"}${durMin?` &middot; ${durMin} min`:""}</div>
         </div>
-        <div class="wc-del" data-action="delete-workout" data-id="${w.id}">&times;</div>
+        <div class="wc-del" data-action="delete-workout" data-id="${escAttr(w.id)}">&times;</div>
       </div>`;
   }).join("") : `<div class="empty-state">No workouts logged yet.<br/>Start your first workout to begin tracking progress.</div>`;
 
@@ -1263,7 +1266,7 @@ function buildExBrowseRows(){
   const list = filterExercises(state.exBrowse.category, state.exBrowse.search);
 
   return list.length ? list.map(ex=>`
-    <div class="ex-row" data-action="view-exercise" data-id="${ex.id}">
+    <div class="ex-row" data-action="view-exercise" data-id="${escAttr(ex.id)}">
       <div>
         <div class="ex-row-name">${escHtml(ex.name)}</div>
         <div class="ex-row-sub">${escHtml(ex.category)} &middot; ${escHtml(ex.equipment)}</div>
@@ -1390,7 +1393,7 @@ function renderExerciseDetail(){
   return `
     <div class="appbar">
       <div class="icon-btn" data-action="back-exercises">&larr;</div>
-      <button class="btn btn-danger btn-sm" data-action="delete-exercise" data-id="${ex.id}">Delete</button>
+      <button class="btn btn-danger btn-sm" data-action="delete-exercise" data-id="${escAttr(ex.id)}">Delete</button>
     </div>
     <div class="screen">
       <div style="font-size:20px; font-weight:700; margin-bottom:4px;">${escHtml(ex.name)}</div>
@@ -1518,29 +1521,29 @@ function renderBlock(b){
     <div class="set-row">
       <div class="set-num">${i+1}</div>
       <input type="text" inputmode="decimal" placeholder="weight" value="${escAttr(s.weight)}"
-        data-action="set-weight" data-block="${b.id}" data-set="${s.id}" />
+        data-action="set-weight" data-block="${escAttr(b.id)}" data-set="${escAttr(s.id)}" />
       <input type="text" inputmode="numeric" placeholder="reps" value="${escAttr(s.reps)}"
-        data-action="set-reps" data-block="${b.id}" data-set="${s.id}" />
-      <div class="set-check ${s.done?'done':''}" data-action="toggle-done" data-block="${b.id}" data-set="${s.id}">&#10003;</div>
-      <div class="set-del" data-action="delete-set" data-block="${b.id}" data-set="${s.id}">&times;</div>
+        data-action="set-reps" data-block="${escAttr(b.id)}" data-set="${escAttr(s.id)}" />
+      <div class="set-check ${s.done?'done':''}" data-action="toggle-done" data-block="${escAttr(b.id)}" data-set="${escAttr(s.id)}">&#10003;</div>
+      <div class="set-del" data-action="delete-set" data-block="${escAttr(b.id)}" data-set="${escAttr(s.id)}">&times;</div>
     </div>
   `).join("");
 
   return `
-    <div class="block" id="block-${b.id}">
+    <div class="block" id="block-${escAttr(b.id)}">
       <div class="ex-head">
         <div>
           <div class="ex-name">${escHtml(ex.name)}</div>
           <div class="ex-tag">${escHtml(ex.category)} &middot; ${escHtml(ex.equipment)}</div>
         </div>
-        <div class="ex-remove" data-action="remove-block" data-block="${b.id}">&times;</div>
+        <div class="ex-remove" data-action="remove-block" data-block="${escAttr(b.id)}">&times;</div>
       </div>
       ${histHtml}
       <div class="sets-table">
         <div class="sets-header"><div></div><div>Weight</div><div>Reps</div><div></div><div></div></div>
         ${setsHtml}
       </div>
-      <button class="btn btn-ghost btn-sm add-set-btn" data-action="add-set" data-block="${b.id}">+ Add Set</button>
+      <button class="btn btn-ghost btn-sm add-set-btn" data-action="add-set" data-block="${escAttr(b.id)}">+ Add Set</button>
     </div>
   `;
 }
@@ -1581,7 +1584,7 @@ function renderDetail(){
   return `
     <div class="appbar">
       <div class="icon-btn" data-action="back-history">&larr;</div>
-      <div class="icon-btn danger" data-action="delete-workout" data-id="${w.id}" title="Delete">&times;</div>
+      <div class="icon-btn danger" data-action="delete-workout" data-id="${escAttr(w.id)}" title="Delete">&times;</div>
     </div>
     <div class="screen">
       <div class="section-title" style="margin-top:0;">${dateStr}</div>
@@ -1665,7 +1668,7 @@ function buildPickerRows(){
       ? `<div class="ex-row-check ${pending?'selected':''}">&#10003;</div>`
       : (isSelected ? `<div class="ex-row-added">Added</div>` : "");
     return `
-      <div class="ex-row ${isSelected?'selected':''}" data-action="pick-exercise" data-id="${ex.id}">
+      <div class="ex-row ${isSelected?'selected':''}" data-action="pick-exercise" data-id="${escAttr(ex.id)}">
         <div>
           <div class="ex-row-name">${escHtml(ex.name)}</div>
           <div class="ex-row-sub">${escHtml(ex.category)} &middot; ${escHtml(ex.equipment)}</div>
@@ -1753,7 +1756,7 @@ function buildTemplateRows(){
   return list.length ? list.map(ex=>{
     const selected = t.selected.includes(ex.id);
     return `
-      <div class="ex-row" data-action="toggle-template-exercise" data-id="${ex.id}">
+      <div class="ex-row" data-action="toggle-template-exercise" data-id="${escAttr(ex.id)}">
         <div>
           <div class="ex-row-name">${escHtml(ex.name)}</div>
           <div class="ex-row-sub">${escHtml(ex.category)} &middot; ${escHtml(ex.equipment)}</div>
@@ -2119,7 +2122,8 @@ function parseBackup(text){
   if(!entries.length) throw new Error("empty backup");
   const vals = {};
   entries.forEach(([k,v])=>{
-    if(!(k in BACKUP_SCHEMAS) || !isStr(v)) throw new Error("bad entry");
+    // Own keys only: `k in obj` also matches inherited names like "toString" or "constructor".
+    if(!Object.prototype.hasOwnProperty.call(BACKUP_SCHEMAS, k) || !isStr(v)) throw new Error("bad entry");
     vals[k] = JSON.parse(v);
   });
   // An exercise id must be a built-in the backup hasn't deleted, or a custom one the backup carries.
@@ -2171,6 +2175,8 @@ function importData(){
   inp.addEventListener("change", ()=>{
     const f = inp.files[0];
     if(!f) return;
+    // Real backups are well under 1 MB; refuse anything huge before reading it into memory.
+    if(f.size > 10*1024*1024){ showToast("That file is too large to be a backup"); return; }
     f.text().then(text=>{
       const entries = parseBackup(text);
       const wk = entries.find(([k])=>k===LS_WORKOUTS);
